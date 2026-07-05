@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Voice Translator Overlay",
+    "slug": "voice-translator-overlay",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.translator.overlaykeyboard",
+      "permissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bc15dd27-e6d1-4ee4-a113-c5755123a0e7"
+      }
+    }
+  }
+}
