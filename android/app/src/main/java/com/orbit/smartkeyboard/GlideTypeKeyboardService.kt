@@ -48,6 +48,10 @@ class GlideTypeKeyboardService : InputMethodService() {
     private var translationInputField: EditText? = null
     private var longPressDelayMs = 400
     private var keyboardHeightDp = 270 // Default keyboard height
+    private var isSizeAdjustActive = false
+    private var keyboardWidthPercent = 100
+    private var keyboardGravity = Gravity.CENTER_HORIZONTAL
+    private var isSymbolsPage2 = false
 
     // Settings fields (synced from SharedPrefs)
     private var vibrationEnabled = true
@@ -237,6 +241,15 @@ class GlideTypeKeyboardService : InputMethodService() {
         super.onDestroy()
     }
 
+    override fun onEvaluateFullscreenMode(): Boolean {
+        return false
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateKeyboardLayout()
+    }
+
     override fun onCreateInputView(): View {
         keyboardContainer = FrameLayout(this).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -262,6 +275,8 @@ class GlideTypeKeyboardService : InputMethodService() {
     private fun loadPreferences() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 270)
+        keyboardWidthPercent = prefs.getInt("keyboard_width_percent", 100)
+        keyboardGravity = prefs.getInt("keyboard_gravity", Gravity.CENTER_HORIZONTAL)
         
         vibrationEnabled = prefs.getBoolean("vibration_enabled", true)
         soundEnabled = prefs.getBoolean("sound_enabled", false)
@@ -336,6 +351,8 @@ class GlideTypeKeyboardService : InputMethodService() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val editor = prefs.edit()
         editor.putInt(PREF_KEY_HEIGHT, keyboardHeightDp)
+        editor.putInt("keyboard_width_percent", keyboardWidthPercent)
+        editor.putInt("keyboard_gravity", keyboardGravity)
 
         val array = JSONArray()
         for (item in clipboardHistory) {
@@ -460,63 +477,17 @@ class GlideTypeKeyboardService : InputMethodService() {
         keyboardContainer.layoutParams = params
         keyboardContainer.setBackgroundColor(Color.parseColor(themeBgColor))
 
+        val screenWidth = resources.displayMetrics.widthPixels
+        val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
         val mainLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                keyboardWidthPx,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        val dragHandle = FrameLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(10)
-            )
-            setBackgroundColor(Color.parseColor(themeBgColor))
-            val line = View(this@GlideTypeKeyboardService).apply {
-                background = createKeyDrawable(Color.parseColor("#444444"), dpToPx(2))
-                layoutParams = FrameLayout.LayoutParams(dpToPx(40), dpToPx(3)).apply {
-                    gravity = Gravity.CENTER
-                }
-            }
-            addView(line)
-        }
-        var dragStartY = 0f
-        var dragStartHeight = 0
-        dragHandle.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    dragStartY = event.rawY
-                    dragStartHeight = keyboardHeightDp
-                    vibrateClick()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val deltaY = event.rawY - dragStartY
-                    val density = resources.displayMetrics.density
-                    val deltaDp = (deltaY / density).toInt()
-                    val newHeight = (dragStartHeight - deltaDp).coerceIn(180, 420)
-                    if (newHeight != keyboardHeightDp) {
-                        keyboardHeightDp = newHeight
-                        val rootParams = keyboardContainer.layoutParams
-                        rootParams.height = dpToPx(keyboardHeightDp)
-                        keyboardContainer.layoutParams = rootParams
-                        keyboardContainer.requestLayout()
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    prefs.edit().putInt(PREF_KEY_HEIGHT, keyboardHeightDp).apply()
-                    vibrateClick()
-                    updateKeyboardLayout()
-                    true
-                }
-                else -> false
+            ).apply {
+                gravity = keyboardGravity or Gravity.BOTTOM
             }
         }
-        mainLayout.addView(dragHandle)
 
         if (isTranslationActive) {
             mainLayout.addView(createTranslationToolbar())
@@ -595,7 +566,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 swipedKeys.add(keyLabel)
                                 showKeyPreview(keyView, keyLabel)
                                 if (keyLabel == " " || keyLabel.lowercase() == "spacebar" || keyLabel == "␣") {
-                                    handler.postDelayed(spaceLongPressRunnable, 3000)
+                                    handler.postDelayed(spaceLongPressRunnable, 1500)
                                 }
                             }
                         }
@@ -692,6 +663,226 @@ class GlideTypeKeyboardService : InputMethodService() {
 
         mainLayout.addView(keyboardArea)
         keyboardContainer.addView(mainLayout)
+
+        if (isSizeAdjustActive) {
+            val resizeOverlay = FrameLayout(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundColor(Color.parseColor("#99000000"))
+            }
+
+            val borderView = View(this).apply {
+                val strokeWidth = dpToPx(2)
+                background = GradientDrawable().apply {
+                    setStroke(strokeWidth, Color.parseColor(themeAccentColor))
+                    setColor(Color.TRANSPARENT)
+                }
+                layoutParams = FrameLayout.LayoutParams(
+                    keyboardWidthPx,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply {
+                    gravity = keyboardGravity or Gravity.BOTTOM
+                }
+            }
+            resizeOverlay.addView(borderView)
+
+            // Top Drag Handle (Height)
+            val topDragHandle = FrameLayout(this).apply {
+                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                layoutParams = FrameLayout.LayoutParams(
+                    dpToPx(120),
+                    dpToPx(16)
+                ).apply {
+                    gravity = keyboardGravity or Gravity.TOP
+                }
+                val label = TextView(context).apply {
+                    text = "↕ Height"
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                }
+                addView(label)
+            }
+            var dragStartY = 0f
+            var dragStartHeight = 0
+            topDragHandle.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        dragStartY = event.rawY
+                        dragStartHeight = keyboardHeightDp
+                        vibrateClick()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaY = event.rawY - dragStartY
+                        val density = resources.displayMetrics.density
+                        val deltaDp = (deltaY / density).toInt()
+                        val newHeight = (dragStartHeight - deltaDp).coerceIn(180, 420)
+                        if (newHeight != keyboardHeightDp) {
+                            keyboardHeightDp = newHeight
+                            val rootParams = keyboardContainer.layoutParams
+                            rootParams.height = dpToPx(keyboardHeightDp)
+                            keyboardContainer.layoutParams = rootParams
+                            keyboardContainer.requestLayout()
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        vibrateClick()
+                        updateKeyboardLayout()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            resizeOverlay.addView(topDragHandle)
+
+            // Left Drag Handle (Width / Left edge)
+            val leftDragHandle = FrameLayout(this).apply {
+                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                layoutParams = FrameLayout.LayoutParams(
+                    dpToPx(16),
+                    dpToPx(100)
+                ).apply {
+                    gravity = Gravity.LEFT or Gravity.CENTER_VERTICAL
+                }
+                val label = TextView(context).apply {
+                    text = "↔\nW\ni\nd\nt\nh"
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                }
+                addView(label)
+            }
+            var dragStartX = 0f
+            var dragStartWidth = 0
+            leftDragHandle.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        dragStartX = event.rawX
+                        dragStartWidth = keyboardWidthPercent
+                        vibrateClick()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaX = event.rawX - dragStartX
+                        val density = resources.displayMetrics.density
+                        val deltaDp = (deltaX / density).toInt()
+                        val deltaPercent = (deltaDp / 5).toInt()
+                        val newWidth = (dragStartWidth - deltaPercent).coerceIn(60, 100)
+                        if (newWidth != keyboardWidthPercent) {
+                            keyboardWidthPercent = newWidth
+                            keyboardGravity = Gravity.RIGHT
+                            updateKeyboardLayout()
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        vibrateClick()
+                        updateKeyboardLayout()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            resizeOverlay.addView(leftDragHandle)
+
+            // Right Drag Handle (Width / Right edge)
+            val rightDragHandle = FrameLayout(this).apply {
+                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                layoutParams = FrameLayout.LayoutParams(
+                    dpToPx(16),
+                    dpToPx(100)
+                ).apply {
+                    gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+                }
+                val label = TextView(context).apply {
+                    text = "↔\nW\ni\nd\nt\nh"
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                }
+                addView(label)
+            }
+            rightDragHandle.setOnTouchListener { _, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        dragStartX = event.rawX
+                        dragStartWidth = keyboardWidthPercent
+                        vibrateClick()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val deltaX = dragStartX - event.rawX
+                        val density = resources.displayMetrics.density
+                        val deltaDp = (deltaX / density).toInt()
+                        val deltaPercent = (deltaDp / 5).toInt()
+                        val newWidth = (dragStartWidth - deltaPercent).coerceIn(60, 100)
+                        if (newWidth != keyboardWidthPercent) {
+                            keyboardWidthPercent = newWidth
+                            keyboardGravity = Gravity.LEFT
+                            updateKeyboardLayout()
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        vibrateClick()
+                        updateKeyboardLayout()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            resizeOverlay.addView(rightDragHandle)
+
+            // Center Gravity Reset Toggle
+            val centerToggleBtn = Button(this).apply {
+                text = "Center"
+                setTextColor(Color.WHITE)
+                background = createKeyDrawable(Color.parseColor("#444444"), dpToPx(4))
+                layoutParams = FrameLayout.LayoutParams(
+                    dpToPx(80),
+                    dpToPx(35)
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setMargins(0, 0, 0, dpToPx(50))
+                }
+                setOnClickListener {
+                    vibrateClick()
+                    keyboardGravity = Gravity.CENTER_HORIZONTAL
+                    updateKeyboardLayout()
+                }
+            }
+            resizeOverlay.addView(centerToggleBtn)
+
+            // Done Button (Save)
+            val doneBtn = Button(this).apply {
+                text = "Done"
+                setTextColor(Color.WHITE)
+                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                layoutParams = FrameLayout.LayoutParams(
+                    dpToPx(80),
+                    dpToPx(35)
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setMargins(0, dpToPx(50), 0, 0)
+                }
+                setOnClickListener {
+                    vibrateClick()
+                    isSizeAdjustActive = false
+                    savePreferences()
+                    updateKeyboardLayout()
+                }
+            }
+            resizeOverlay.addView(doneBtn)
+
+            keyboardContainer.addView(resizeOverlay)
+        }
     }
 
     private fun createToolbarIconButton(resId: Int, isRedBackground: Boolean = false, onClick: () -> Unit): View {
@@ -727,23 +918,41 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun createToolbar(): View {
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val toolbarHeight = if (isToolbarCollapsed) dpToPx(10) else dpToPx(40)
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor(themeToolbarBg))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(40)
+                toolbarHeight
             )
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dpToPx(6), 0, dpToPx(6), 0)
         }
 
         if (isToolbarCollapsed) {
-            val expandBtn = createToolbarIconButton(R.drawable.ic_expand) {
-                isToolbarCollapsed = false
-                updateKeyboardLayout()
+            val line = View(this).apply {
+                background = createKeyDrawable(Color.parseColor("#444444"), dpToPx(2))
+                layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(3)).apply {
+                    gravity = Gravity.CENTER
+                }
             }
-            toolbar.addView(expandBtn)
+            val container = FrameLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                addView(line, FrameLayout.LayoutParams(dpToPx(40), dpToPx(3)).apply {
+                    gravity = Gravity.CENTER
+                })
+                setOnClickListener {
+                    vibrateClick()
+                    isToolbarCollapsed = false
+                    updateKeyboardLayout()
+                }
+            }
+            toolbar.addView(container)
         } else {
             val collapseBtn = createToolbarIconButton(R.drawable.ic_collapse) {
                 isToolbarCollapsed = true
@@ -751,11 +960,55 @@ class GlideTypeKeyboardService : InputMethodService() {
             }
             toolbar.addView(collapseBtn)
 
-            if (translationFeatureEnabled) {
-                val active = isTranslationActive
-                val activeBgColor = if (active) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                val transBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(activeBgColor, dpToPx(6))
+            if (isListening) {
+                val waveView = VoiceWaveView(this, themeAccentColor).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        dpToPx(30),
+                        1f
+                    ).apply {
+                        gravity = Gravity.CENTER
+                        setMargins(dpToPx(12), 0, dpToPx(12), 0)
+                    }
+                }
+                toolbar.addView(waveView)
+
+                val stopBtn = createToolbarIconButton(R.drawable.ic_mic, true) {
+                    stopVoiceInput()
+                }
+                toolbar.addView(stopBtn)
+            } else {
+                if (translationFeatureEnabled) {
+                    val active = isTranslationActive
+                    val activeBgColor = if (active) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                    val transBtn = FrameLayout(this).apply {
+                        background = createKeyDrawable(activeBgColor, dpToPx(6))
+                        isClickable = true
+                        isFocusable = true
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
+                            setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                        }
+                        setOnClickListener {
+                            vibrateClick()
+                            isTranslationActive = !isTranslationActive
+                            updateKeyboardLayout()
+                        }
+                    }
+                    val transIcon = ImageView(this).apply {
+                        setImageResource(R.drawable.ic_translate)
+                        setColorFilter(Color.WHITE)
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
+                            gravity = Gravity.CENTER
+                        }
+                    }
+                    transBtn.addView(transIcon)
+                    toolbar.addView(transBtn)
+                }
+
+                val clipActive = currentViewMode == ViewMode.CLIPBOARD
+                val clipBgColor = if (clipActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                val clipBtn = FrameLayout(this).apply {
+                    background = createKeyDrawable(clipBgColor, dpToPx(6))
                     isClickable = true
                     isFocusable = true
                     layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
@@ -763,93 +1016,99 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                     setOnClickListener {
                         vibrateClick()
-                        isTranslationActive = !isTranslationActive
+                        currentViewMode = if (clipActive) ViewMode.QWERTY else ViewMode.CLIPBOARD
                         updateKeyboardLayout()
                     }
                 }
-                val transIcon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_translate)
+                val clipIcon = ImageView(this).apply {
+                    setImageResource(R.drawable.ic_clipboard)
                     setColorFilter(Color.WHITE)
                     layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
                         gravity = Gravity.CENTER
                     }
                 }
-                transBtn.addView(transIcon)
-                toolbar.addView(transBtn)
-            }
+                clipBtn.addView(clipIcon)
+                toolbar.addView(clipBtn)
 
-            val clipActive = currentViewMode == ViewMode.CLIPBOARD
-            val clipBgColor = if (clipActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-            val clipBtn = FrameLayout(this).apply {
-                background = createKeyDrawable(clipBgColor, dpToPx(6))
-                isClickable = true
-                isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                    setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                }
-                setOnClickListener {
-                    vibrateClick()
-                    currentViewMode = if (clipActive) ViewMode.QWERTY else ViewMode.CLIPBOARD
-                    updateKeyboardLayout()
-                }
-            }
-            val clipIcon = ImageView(this).apply {
-                setImageResource(R.drawable.ic_clipboard)
-                setColorFilter(Color.WHITE)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                    gravity = Gravity.CENTER
-                }
-            }
-            clipBtn.addView(clipIcon)
-            toolbar.addView(clipBtn)
-
-            val pcActive = currentViewMode == ViewMode.PC_SHORTCUTS
-            val pcBgColor = if (pcActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-            val pcBtn = FrameLayout(this).apply {
-                background = createKeyDrawable(pcBgColor, dpToPx(6))
-                isClickable = true
-                isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                    setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                }
-                setOnClickListener {
-                    vibrateClick()
-                    currentViewMode = if (pcActive) ViewMode.QWERTY else ViewMode.PC_SHORTCUTS
-                    updateKeyboardLayout()
-                }
-            }
-            val pcIcon = ImageView(this).apply {
-                setImageResource(R.drawable.ic_pc)
-                setColorFilter(Color.WHITE)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                    gravity = Gravity.CENTER
-                }
-            }
-            pcBtn.addView(pcIcon)
-            toolbar.addView(pcBtn)
-
-            val heightBtn = createToolbarIconButton(R.drawable.ic_height) {
-                showSizeAdjustmentDialog()
-            }
-            toolbar.addView(heightBtn)
-
-            val settingsBtn = createToolbarIconButton(R.drawable.ic_settings) {
-                val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivity(intent)
-            }
-            toolbar.addView(settingsBtn)
-
-            if (voiceDictationEnabled) {
-                val micBtn = createToolbarIconButton(R.drawable.ic_mic, isListening) {
-                    if (isListening) {
-                        stopVoiceInput()
-                    } else {
-                        startVoiceInput()
+                val pcActive = currentViewMode == ViewMode.PC_SHORTCUTS
+                val pcBgColor = if (pcActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                val pcBtn = FrameLayout(this).apply {
+                    background = createKeyDrawable(pcBgColor, dpToPx(6))
+                    isClickable = true
+                    isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
+                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                    }
+                    setOnClickListener {
+                        vibrateClick()
+                        currentViewMode = if (pcActive) ViewMode.QWERTY else ViewMode.PC_SHORTCUTS
+                        updateKeyboardLayout()
                     }
                 }
-                toolbar.addView(micBtn)
+                val pcIcon = ImageView(this).apply {
+                    setImageResource(R.drawable.ic_pc)
+                    setColorFilter(Color.WHITE)
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
+                        gravity = Gravity.CENTER
+                    }
+                }
+                pcBtn.addView(pcIcon)
+                toolbar.addView(pcBtn)
+
+                val heightBtn = createToolbarIconButton(R.drawable.ic_height) {
+                    showSizeAdjustmentDialog()
+                }
+                toolbar.addView(heightBtn)
+
+                val settingsBtn = createToolbarIconButton(R.drawable.ic_settings) {
+                    val launchIntent = packageManager.getLaunchIntentForPackage("com.orbit.smartkeyboard")
+                    if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(launchIntent)
+                    } else {
+                        val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                    }
+                }
+                toolbar.addView(settingsBtn)
+
+                if (voiceDictationEnabled) {
+                    val micBtn = createToolbarIconButton(R.drawable.ic_mic, isListening) {
+                        if (isListening) {
+                            stopVoiceInput()
+                        } else {
+                            startVoiceInput()
+                        }
+                    }
+                    toolbar.addView(micBtn)
+                }
+
+                if (isLandscape) {
+                    val pcButtons = listOf(
+                        Pair(R.drawable.ic_select_all) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_A) },
+                        Pair(R.drawable.ic_copy) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_C) },
+                        Pair(R.drawable.ic_paste) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_V) },
+                        Pair(R.drawable.ic_undo) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_Z) },
+                        Pair(R.drawable.ic_redo) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_Y) },
+                        Pair(R.drawable.ic_left) { 
+                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
+                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
+                        },
+                        Pair(R.drawable.ic_right) {
+                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_RIGHT))
+                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_RIGHT))
+                        }
+                    )
+                    for (btn in pcButtons) {
+                        val iconBtn = createToolbarIconButton(btn.first) {
+                            vibrateClick()
+                            btn.second()
+                        }
+                        toolbar.addView(iconBtn)
+                    }
+                }
             }
         }
 
@@ -857,61 +1116,8 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun showSizeAdjustmentDialog() {
-        val context = this
-        val dialogView = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(16), dpToPx(16), dpToPx(16), dpToPx(16))
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
-        }
-
-        val text = TextView(context).apply {
-            text = "Keyboard Height: ${keyboardHeightDp}dp"
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setPadding(0, 0, 0, dpToPx(12))
-        }
-        dialogView.addView(text)
-
-        val seekBar = SeekBar(context).apply {
-            max = 200
-            progress = keyboardHeightDp - 200
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    keyboardHeightDp = progress + 200
-                    text.text = "Keyboard Height: ${keyboardHeightDp}dp"
-                    updateKeyboardLayout()
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                    savePreferences()
-                }
-            })
-        }
-        dialogView.addView(seekBar)
-
-        val overlayParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-        val frame = FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#CC000000"))
-            setOnClickListener {
-                updateKeyboardLayout()
-            }
-        }
-
-        val centerParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.CENTER
-            setMargins(dpToPx(24), 0, dpToPx(24), 0)
-        }
-        dialogView.layoutParams = centerParams
-        frame.addView(dialogView)
-
-        keyboardContainer.addView(frame, overlayParams)
+        isSizeAdjustActive = true
+        updateKeyboardLayout()
     }
 
     private fun createQwertyLayout(): View {
@@ -955,9 +1161,21 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         val row1 = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
-        val row2 = listOf("@", "#", "${'$'}", "%", "&", "-", "+", "(", ")", "/")
-        val row3 = listOf("*", "\"", "'", ":", ";", "!", "?", "\\", "_")
-        val row4 = listOf("ABC", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
+        val row2 = if (isSymbolsPage2) {
+            listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "=")
+        } else {
+            listOf("@", "#", "${'$'}", "%", "&", "-", "+", "(", ")", "/")
+        }
+        val row3 = if (isSymbolsPage2) {
+            listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•")
+        } else {
+            listOf("*", "\"", "'", ":", ";", "!", "?", "\\", "_")
+        }
+        val row4 = if (isSymbolsPage2) {
+            listOf("1/2", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
+        } else {
+            listOf("2/2", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
+        }
         val row5 = listOf("ABC", "😊", "Spacebar", ",", "Enter")
 
         // Number row is always visible in symbols mode
@@ -1113,7 +1331,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             MotionEvent.ACTION_DOWN -> {
                                 spaceLongPressedLocal = false
                                 v.isPressed = true
-                                handler.postDelayed(spaceLongPressRunnableLocal, 3000)
+                                handler.postDelayed(spaceLongPressRunnableLocal, 1500)
                             }
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(spaceLongPressRunnableLocal)
@@ -1232,6 +1450,10 @@ class GlideTypeKeyboardService : InputMethodService() {
                     currentViewMode = ViewMode.SYMBOLS
                     updateKeyboardLayout()
                 }
+                "1/2", "2/2" -> {
+                    isSymbolsPage2 = !isSymbolsPage2
+                    updateKeyboardLayout()
+                }
                 "abc" -> {
                     currentViewMode = ViewMode.QWERTY
                     updateKeyboardLayout()
@@ -1274,6 +1496,10 @@ class GlideTypeKeyboardService : InputMethodService() {
             }
             "?123" -> {
                 currentViewMode = ViewMode.SYMBOLS
+                updateKeyboardLayout()
+            }
+            "1/2", "2/2" -> {
+                isSymbolsPage2 = !isSymbolsPage2
                 updateKeyboardLayout()
             }
             "abc" -> {
@@ -1372,6 +1598,25 @@ class GlideTypeKeyboardService : InputMethodService() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
+        val abcBtn = Button(this).apply {
+            text = "ABC"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(45),
+                dpToPx(30)
+            ).apply {
+                setMargins(dpToPx(6), 0, dpToPx(4), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                currentViewMode = ViewMode.QWERTY
+                updateKeyboardLayout()
+            }
+        }
+        tabLayout.addView(abcBtn)
+
         val tabContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = FrameLayout.LayoutParams(
@@ -1412,13 +1657,39 @@ class GlideTypeKeyboardService : InputMethodService() {
                     MotionEvent.ACTION_DOWN -> {
                         vibrateClick()
                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                        currentInputConnection?.deleteSurroundingText(1, 0)
+                        if (isTranslationActive && translationInputField != null) {
+                            val et = translationInputField!!
+                            val start = et.selectionStart
+                            val end = et.selectionEnd
+                            if (start > 0 || end > 0) {
+                                if (start != end) {
+                                    et.text.delete(Math.min(start, end), Math.max(start, end))
+                                } else {
+                                    et.text.delete(start - 1, start)
+                                }
+                            }
+                        } else {
+                            currentInputConnection?.deleteSurroundingText(1, 0)
+                        }
                         
                         backspaceRunnable = object : Runnable {
                             override fun run() {
                                 vibrateClick()
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                currentInputConnection?.deleteSurroundingText(1, 0)
+                                if (isTranslationActive && translationInputField != null) {
+                                    val et = translationInputField!!
+                                    val start = et.selectionStart
+                                    val end = et.selectionEnd
+                                    if (start > 0 || end > 0) {
+                                        if (start != end) {
+                                            et.text.delete(Math.min(start, end), Math.max(start, end))
+                                        } else {
+                                            et.text.delete(start - 1, start)
+                                        }
+                                    }
+                                } else {
+                                    currentInputConnection?.deleteSurroundingText(1, 0)
+                                }
                                 handler.postDelayed(this, 55)
                             }
                         }
@@ -1458,52 +1729,48 @@ class GlideTypeKeyboardService : InputMethodService() {
         fun loadEmojiGrid(categoryIndex: Int) {
             contentArea.removeAllViews()
             
-            val grid = GridLayout(this@GlideTypeKeyboardService).apply {
-                columnCount = 7
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
-            }
-
-            val gridScroll = ScrollView(this@GlideTypeKeyboardService).apply {
+            val gridView = GridView(this@GlideTypeKeyboardService).apply {
+                numColumns = 7
+                verticalSpacing = dpToPx(4)
+                horizontalSpacing = dpToPx(4)
+                stretchMode = GridView.STRETCH_COLUMN_WIDTH
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                addView(grid)
-            }
-
-            val categoryEmojis = emojiCategories[categoryIndex].second
-            val itemSize = dpToPx(42)
-
-            for (emoji in categoryEmojis) {
-                if (emoji.isEmpty()) continue
-                val cell = FrameLayout(this@GlideTypeKeyboardService).apply {
-                    layoutParams = GridLayout.LayoutParams().apply {
-                        width = 0
-                        columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
-                        setGravity(Gravity.CENTER)
-                        setMargins(dpToPx(1), dpToPx(1), dpToPx(1), dpToPx(1))
-                    }
-
-                    addView(TextView(this@GlideTypeKeyboardService).apply {
-                        text = emoji
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-                        gravity = Gravity.CENTER
-                        background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
-                        layoutParams = FrameLayout.LayoutParams(itemSize, itemSize)
-                        setOnClickListener {
+                setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
+                
+                val categoryEmojis = emojiCategories[categoryIndex].second
+                adapter = object : android.widget.BaseAdapter() {
+                    override fun getCount(): Int = categoryEmojis.size
+                    override fun getItem(position: Int): Any = categoryEmojis[position]
+                    override fun getItemId(position: Int): Long = position.toLong()
+                    override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+                        val textView = (convertView as? TextView) ?: TextView(this@GlideTypeKeyboardService).apply {
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+                            gravity = Gravity.CENTER
+                            val itemSize = dpToPx(42)
+                            layoutParams = AbsListView.LayoutParams(itemSize, itemSize)
+                            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                        }
+                        textView.text = categoryEmojis[position]
+                        textView.setOnClickListener {
                             vibrateClick()
                             playClick(100)
-                            currentInputConnection?.commitText(emoji, 1)
+                            if (isTranslationActive && translationInputField != null) {
+                                val et = translationInputField!!
+                                val start = et.selectionStart
+                                val end = et.selectionEnd
+                                et.text.replace(Math.min(start, end), Math.max(start, end), categoryEmojis[position])
+                            } else {
+                                currentInputConnection?.commitText(categoryEmojis[position], 1)
+                            }
                         }
-                    })
+                        return textView
+                    }
                 }
-                grid.addView(cell)
             }
-            contentArea.addView(gridScroll)
+            contentArea.addView(gridView)
         }
 
         for (i in emojiCategories.indices) {
@@ -1812,10 +2079,11 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
         toolbar.addView(closeBtn)
 
-        val sourceBtn = Button(this).apply {
+        val sourceBtn = TextView(this).apply {
             text = translationSourceLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
             background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30)).apply {
                 setMargins(dpToPx(4), 0, 0, 0)
@@ -1836,10 +2104,11 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
         toolbar.addView(arrowText)
 
-        val targetBtn = Button(this).apply {
+        val targetBtn = TextView(this).apply {
             text = translationTargetLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
             background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30))
             setOnClickListener {
@@ -1849,46 +2118,60 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
         toolbar.addView(targetBtn)
 
-        val inputField = EditText(this).apply {
-            translationInputField = this
-            showSoftInputOnFocus = false
-            hint = "Type here..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            background = null
-            maxLines = 1
-            isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                1.0f
-            ).apply {
-                setMargins(dpToPx(8), 0, dpToPx(8), 0)
+        if (isListening) {
+            val waveView = VoiceWaveView(this, themeAccentColor).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    dpToPx(30),
+                    1f
+                ).apply {
+                    gravity = Gravity.CENTER
+                    setMargins(dpToPx(8), 0, dpToPx(8), 0)
+                }
             }
+            toolbar.addView(waveView)
+        } else {
+            val inputField = EditText(this).apply {
+                translationInputField = this
+                showSoftInputOnFocus = false
+                hint = "Type here..."
+                setHintTextColor(Color.GRAY)
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                background = null
+                maxLines = 1
+                isSingleLine = true
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    1.0f
+                ).apply {
+                    setMargins(dpToPx(8), 0, dpToPx(8), 0)
+                }
 
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
-                    val query = s?.toString() ?: ""
-                    if (query.isEmpty()) {
-                        currentInputConnection?.setComposingText("", 1)
-                        return
-                    }
-                    translationRunnable = Runnable {
-                        translateText(query, translationSourceLang, translationTargetLang) { result ->
-                            if (result != null) {
-                                currentInputConnection?.setComposingText(result, 1)
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
+                        val query = s?.toString() ?: ""
+                        if (query.isEmpty()) {
+                            currentInputConnection?.setComposingText("", 1)
+                            return
+                        }
+                        translationRunnable = Runnable {
+                            translateText(query, translationSourceLang, translationTargetLang) { result ->
+                                if (result != null) {
+                                    currentInputConnection?.setComposingText(result, 1)
+                                }
                             }
                         }
+                        translationDebounceHandler.postDelayed(translationRunnable!!, 400)
                     }
-                    translationDebounceHandler.postDelayed(translationRunnable!!, 400)
-                }
-                override fun afterTextChanged(s: android.text.Editable?) {}
-            })
+                    override fun afterTextChanged(s: android.text.Editable?) {}
+                })
+            }
+            toolbar.addView(inputField)
         }
-        toolbar.addView(inputField)
 
         val voiceTranslateBtn = FrameLayout(this).apply {
             background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
@@ -1927,7 +2210,6 @@ class GlideTypeKeyboardService : InputMethodService() {
             setOnClickListener {
                 vibrateClick()
                 currentInputConnection?.finishComposingText()
-                inputField.setText("")
                 translationInputField = null
                 isTranslationActive = false
                 updateKeyboardLayout()
@@ -2010,6 +2292,19 @@ class GlideTypeKeyboardService : InputMethodService() {
         }.start()
     }
 
+    private fun playVoiceBeep(start: Boolean) {
+        try {
+            val toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 100)
+            if (start) {
+                toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
+            } else {
+                toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 150)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     private fun startVoiceInput() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -2028,16 +2323,19 @@ class GlideTypeKeyboardService : InputMethodService() {
                 setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: android.os.Bundle?) {
                         Toast.makeText(this@GlideTypeKeyboardService, "Listening...", Toast.LENGTH_SHORT).show()
+                        playVoiceBeep(true)
                     }
                     override fun onBeginningOfSpeech() {}
                     override fun onRmsChanged(rmsdB: Float) {}
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {
                         isListening = false
+                        playVoiceBeep(false)
                         updateKeyboardLayout()
                     }
                     override fun onError(error: Int) {
                         isListening = false
+                        playVoiceBeep(false)
                         val message = when (error) {
                             SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
                             SpeechRecognizer.ERROR_CLIENT -> "Client side error"
@@ -2067,9 +2365,23 @@ class GlideTypeKeyboardService : InputMethodService() {
                             }
                         }
                         isListening = false
+                        playVoiceBeep(false)
                         updateKeyboardLayout()
                     }
-                    override fun onPartialResults(partialResults: android.os.Bundle?) {}
+                    override fun onPartialResults(partialResults: android.os.Bundle?) {
+                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (!matches.isNullOrEmpty()) {
+                            val text = matches[0]
+                            if (isTranslationActive && translationInputField != null) {
+                                val et = translationInputField!!
+                                val start = et.selectionStart
+                                val end = et.selectionEnd
+                                et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                            } else {
+                                currentInputConnection?.setComposingText(text, 1)
+                            }
+                        }
+                    }
                     override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
                 })
             }
@@ -2088,6 +2400,7 @@ class GlideTypeKeyboardService : InputMethodService() {
     private fun stopVoiceInput() {
         speechRecognizer?.stopListening()
         isListening = false
+        playVoiceBeep(false)
         updateKeyboardLayout()
     }
 
@@ -2227,6 +2540,14 @@ class GlideTypeKeyboardService : InputMethodService() {
         return layout
     }
 
+    private fun isPcKeyWorkable(key: String): Boolean {
+        if (isTranslationActive) {
+            val unworkableKeys = listOf("Esc", "Tab", "Find", "Home", "End", "PgUp", "PgDn", "Up", "Down")
+            return !unworkableKeys.contains(key)
+        }
+        return true
+    }
+
     private fun createPcKeyRow(keys: List<String>): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2239,6 +2560,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         for (key in keys) {
+            val workable = isPcKeyWorkable(key)
             val keyView = FrameLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     0,
@@ -2250,8 +2572,9 @@ class GlideTypeKeyboardService : InputMethodService() {
 
                 val keyLayout = RelativeLayout(context).apply {
                     background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
+                    isClickable = workable
+                    isFocusable = workable
+                    alpha = if (workable) 1.0f else 0.4f
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -2286,6 +2609,63 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun handlePcShortcutPress(key: String) {
+        if (!isPcKeyWorkable(key)) return
+        if (isTranslationActive && translationInputField != null) {
+            val et = translationInputField!!
+            val start = et.selectionStart
+            val end = et.selectionEnd
+            when (key) {
+                "Undo" -> et.onTextContextMenuItem(android.R.id.undo)
+                "Redo" -> et.onTextContextMenuItem(android.R.id.redo)
+                "Select All" -> et.selectAll()
+                "Cut" -> {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val selectedText = et.text.substring(Math.min(start, end), Math.max(start, end))
+                    if (selectedText.isNotEmpty()) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("clipboard", selectedText))
+                        et.text.delete(Math.min(start, end), Math.max(start, end))
+                    }
+                }
+                "Copy" -> {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val selectedText = et.text.substring(Math.min(start, end), Math.max(start, end))
+                    if (selectedText.isNotEmpty()) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("clipboard", selectedText))
+                    }
+                }
+                "Paste" -> {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clipData = clipboard.primaryClip
+                    if (clipData != null && clipData.itemCount > 0) {
+                        val text = clipData.getItemAt(0).text ?: ""
+                        et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                    }
+                }
+                "Left" -> {
+                    if (start > 0) et.setSelection(start - 1)
+                }
+                "Right" -> {
+                    if (start < et.length()) et.setSelection(start + 1)
+                }
+                "Del" -> {
+                    if (start < et.length()) {
+                        if (start != end) {
+                            et.text.delete(Math.min(start, end), Math.max(start, end))
+                        } else {
+                            et.text.delete(start, start + 1)
+                        }
+                    }
+                }
+                "Enter" -> {
+                    handleKeyPress("enter")
+                }
+                "ABC" -> {
+                    handleKeyPress("abc")
+                }
+            }
+            return
+        }
+
         val ic = currentInputConnection ?: return
         when (key) {
             "Esc" -> {
@@ -2389,5 +2769,47 @@ class GestureDrawingView(context: Context, val strokeColor: String) : View(conte
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawPath(path, paint)
+    }
+}
+
+class VoiceWaveView(context: Context, val accentColor: String) : View(context) {
+    private val paint = Paint().apply {
+        color = Color.parseColor(accentColor)
+        style = Paint.Style.FILL
+        isAntiAlias = true
+    }
+    private val handlerRef = Handler(Looper.getMainLooper())
+    private val barHeights = floatArrayOf(0.2f, 0.5f, 0.8f, 0.4f, 0.6f)
+    private val runnable = object : Runnable {
+        override fun run() {
+            for (i in barHeights.indices) {
+                barHeights[i] = (0.2f + Math.random() * 0.8f).toFloat()
+            }
+            invalidate()
+            handlerRef.postDelayed(this, 100)
+        }
+    }
+    init {
+        handlerRef.post(runnable)
+    }
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        handlerRef.removeCallbacks(runnable)
+    }
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val barCount = 5
+        val spacing = w / (barCount + 1)
+        val barWidth = spacing * 0.4f
+        for (i in 0 until barCount) {
+            val cx = spacing * (i + 1)
+            val barHeight = h * barHeights[i]
+            val top = (h - barHeight) / 2
+            val bottom = top + barHeight
+            val rect = android.graphics.RectF(cx - barWidth/2, top, cx + barWidth/2, bottom)
+            canvas.drawRoundRect(rect, barWidth/2, barWidth/2, paint)
+        }
     }
 }
