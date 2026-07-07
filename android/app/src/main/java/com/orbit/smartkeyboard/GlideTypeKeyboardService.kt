@@ -632,7 +632,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         val swiped = mutableListOf<String>()
                         if (keyLabel.isNotEmpty()) {
                             swiped.add(keyLabel)
-                            showKeyPreview(keyView, keyLabel)
+                            showKeyPreview(keyView!!, keyLabel)
                         }
                         
                         val pointer = TouchPointer(
