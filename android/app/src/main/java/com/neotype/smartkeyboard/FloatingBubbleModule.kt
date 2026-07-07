@@ -103,7 +103,7 @@ class FloatingBubbleModule(reactContext: ReactApplicationContext) : ReactContext
             val imm = reactApplicationContext.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             val list = imm.enabledInputMethodList
             val packageName = reactApplicationContext.packageName
-            val targetId = "$packageName/$packageName.GlideTypeKeyboardService"
+            val targetId = "$packageName/.GlideTypeKeyboardService"
             val isEnabled = list.any { it.id == targetId }
             promise.resolve(isEnabled)
         } catch (e: Exception) {
@@ -119,7 +119,7 @@ class FloatingBubbleModule(reactContext: ReactApplicationContext) : ReactContext
                 Settings.Secure.DEFAULT_INPUT_METHOD
             )
             val packageName = reactApplicationContext.packageName
-            val targetId = "$packageName/$packageName.GlideTypeKeyboardService"
+            val targetId = "$packageName/.GlideTypeKeyboardService"
             promise.resolve(currentIME != null && currentIME == targetId)
         } catch (e: Exception) {
             promise.reject("Error checking if keyboard is default", e)

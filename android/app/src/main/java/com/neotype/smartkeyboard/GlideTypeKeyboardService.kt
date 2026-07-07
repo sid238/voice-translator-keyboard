@@ -349,22 +349,30 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun setupClipboardListener() {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.addPrimaryClipChangedListener {
-            fetchSystemClipboard()
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.addPrimaryClipChangedListener {
+                fetchSystemClipboard()
+            }
+        } catch (e: Exception) {
+            // Ignore security or initialization exceptions
         }
     }
 
     private fun fetchSystemClipboard() {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        if (clipboard.hasPrimaryClip()) {
-            val clipData = clipboard.primaryClip
-            if (clipData != null && clipData.itemCount > 0) {
-                val text = clipData.getItemAt(0).text?.toString()?.trim()
-                if (!text.isNullOrEmpty()) {
-                    addClipboardItem(text)
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (clipboard.hasPrimaryClip()) {
+                val clipData = clipboard.primaryClip
+                if (clipData != null && clipData.itemCount > 0) {
+                    val text = clipData.getItemAt(0).text?.toString()?.trim()
+                    if (!text.isNullOrEmpty()) {
+                        addClipboardItem(text)
+                    }
                 }
             }
+        } catch (e: Exception) {
+            // Ignore background clipboard access security exceptions
         }
     }
 
