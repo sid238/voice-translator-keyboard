@@ -67,9 +67,10 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     private var isFontSelectorActive = false
     private var currentKeyboardFont = KeyboardFont.NORMAL
+    private var wasLastKeySpace = true
 
     enum class KeyboardFont {
-        NORMAL, BOLD, ITALIC, SCRIPT, TYPEWRITER, CIRCLED, GOTHIC, OUTLINE
+        NORMAL, BOLD_SERIF, ITALIC_SERIF, BOLD_ITALIC_SERIF, SCRIPT, BOLD_SCRIPT, GOTHIC, BOLD_GOTHIC, OUTLINE, TYPEWRITER, CIRCLED, NEGATIVE_CIRCLED, SQUARED, NEGATIVE_SQUARED, FULLWIDTH, SMALL_CAPS, PARENTHESIZED, SUBSCRIPT, SUPERSCRIPT, STRIKETHROUGH, SLASHED, UNDERLINE, DOUBLE_UNDERLINE, OVERLINE, DOTTED, WAVY, ZALGO, INVERTED, REVERSED, MORSE, FANCY_BRACKETS, FANCY_ARROWS, FANCY_HEARTS, FANCY_STARS, FANCY_SPARKLES, FANCY_SMILEY, MATH_BOLD_SANS, MATH_ITALIC_SANS, MATH_BOLD_ITALIC_SANS, CURSIVE, PARENTHESIZED_DIGITS, NEGATIVE_CIRCLED_DIGITS, DOUBLE_PARENTHESES, CYBER, STARLIGHT, DIAMOND, TSUNAMI, DOUBLE_SLASH, SLASH_BOX, SHARP, CROSSED
     }
 
     // Settings fields (synced from SharedPrefs)
@@ -1221,11 +1222,28 @@ class GlideTypeKeyboardService : InputMethodService() {
                 updateKeyboardLayout()
             }
         } else {
+            val scrollView = HorizontalScrollView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                isHorizontalScrollBarEnabled = false
+            }
+
+            val buttonsContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+
             val collapseBtn = createToolbarIconButton(R.drawable.ic_collapse) {
                 isToolbarCollapsed = true
                 updateKeyboardLayout()
             }
-            toolbar.addView(collapseBtn)
+            buttonsContainer.addView(collapseBtn)
 
             if (isListening) {
                 val waveView = VoiceWaveView(this, themeAccentColor).apply {
@@ -1238,12 +1256,12 @@ class GlideTypeKeyboardService : InputMethodService() {
                         setMargins(dpToPx(12), 0, dpToPx(12), 0)
                     }
                 }
-                toolbar.addView(waveView)
+                buttonsContainer.addView(waveView)
 
                 val stopBtn = createToolbarIconButton(R.drawable.ic_mic, true) {
                     stopVoiceInput()
                 }
-                toolbar.addView(stopBtn)
+                buttonsContainer.addView(stopBtn)
             } else {
                 if (translationFeatureEnabled) {
                     val active = isTranslationActive
@@ -1269,7 +1287,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         }
                     }
                     transBtn.addView(transIcon)
-                    toolbar.addView(transBtn)
+                    buttonsContainer.addView(transBtn)
                 }
 
                 val clipActive = currentViewMode == ViewMode.CLIPBOARD
@@ -1295,7 +1313,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                 }
                 clipBtn.addView(clipIcon)
-                toolbar.addView(clipBtn)
+                buttonsContainer.addView(clipBtn)
 
                 val pcActive = currentViewMode == ViewMode.PC_SHORTCUTS
                 val pcBgColor = if (pcActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
@@ -1320,12 +1338,12 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                 }
                 pcBtn.addView(pcIcon)
-                toolbar.addView(pcBtn)
+                buttonsContainer.addView(pcBtn)
 
                 val heightBtn = createToolbarIconButton(R.drawable.ic_height) {
                     showSizeAdjustmentDialog()
                 }
-                toolbar.addView(heightBtn)
+                buttonsContainer.addView(heightBtn)
 
                 val settingsBtn = createToolbarIconButton(R.drawable.ic_settings) {
                     val launchIntent = packageManager.getLaunchIntentForPackage("com.orbit.smartkeyboard")
@@ -1339,7 +1357,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         startActivity(intent)
                     }
                 }
-                toolbar.addView(settingsBtn)
+                buttonsContainer.addView(settingsBtn)
 
                 if (voiceDictationEnabled) {
                     val micBtn = createToolbarIconButton(R.drawable.ic_mic, isListening) {
@@ -1349,7 +1367,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             startVoiceInput()
                         }
                     }
-                    toolbar.addView(micBtn)
+                    buttonsContainer.addView(micBtn)
                 }
 
                 // Font Changer Button immediately next to the mic button
@@ -1376,7 +1394,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                 }
                 fontBtn.addView(fontIcon)
-                toolbar.addView(fontBtn)
+                buttonsContainer.addView(fontBtn)
 
                 if (isLandscape) {
                     val pcButtons = listOf(
@@ -1399,16 +1417,18 @@ class GlideTypeKeyboardService : InputMethodService() {
                             vibrateClick()
                             btn.second()
                         }
-                        toolbar.addView(iconBtn)
+                        buttonsContainer.addView(iconBtn)
                     }
                 }
             }
+            scrollView.addView(buttonsContainer)
+            toolbar.addView(scrollView)
         }
 
         return toolbar
     }
 
-    private fun createNavigationToolbar(title: String): View {
+        private fun createNavigationToolbar(title: String): View {
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor(themeToolbarBg))
@@ -1905,10 +1925,15 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     private fun updateShiftStateBasedOnContext() {
         if (!autoCapEnabled) return
-        val ic = currentInputConnection ?: return
+        val ic = currentInputConnection
+        if (ic == null) {
+            isShifted = wasLastKeySpace
+            updateKeyboardLayout()
+            return
+        }
         val textBefore = ic.getTextBeforeCursor(2, 0)
         if (textBefore == null || textBefore.isEmpty()) {
-            isShifted = true
+            isShifted = wasLastKeySpace
             updateKeyboardLayout()
         } else {
             val str = textBefore.toString()
@@ -1970,9 +1995,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                             }
                         }
                     }
+                    wasLastKeySpace = true
                 }
                 "spacebar", " ", "␣" -> {
                     et.text.replace(Math.min(start, end), Math.max(start, end), " ")
+                    wasLastKeySpace = true
                 }
                 "shift", "⇧", "⇪" -> {
                     // Ignored in translation field
@@ -2003,8 +2030,10 @@ class GlideTypeKeyboardService : InputMethodService() {
                     et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
                     if (isShifted && !isCapsLock) {
                         isShifted = false
-                        updateKeyboardLayout()
                     }
+                    wasLastKeySpace = false
+                    updateShiftStateBasedOnContext()
+                    updateKeyboardLayout()
                 }
             }
             return
@@ -2036,6 +2065,7 @@ class GlideTypeKeyboardService : InputMethodService() {
             "enter", "↵" -> {
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                wasLastKeySpace = true
                 updateShiftStateBasedOnContext()
             }
             "spacebar", " ", "␣" -> {
@@ -2052,6 +2082,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ic.commitText(" ", 1)
                 }
                 lastSpacePressTime = now
+                wasLastKeySpace = true
                 updateShiftStateBasedOnContext()
             }
             "?123" -> {
@@ -2060,7 +2091,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                 updateKeyboardLayout()
             }
             "1/2", "2/2" -> {
-                isHindiPage2 = !isHindiPage2
+                if (currentViewMode == ViewMode.HINDI) {
+                    isHindiPage2 = !isHindiPage2
+                } else {
+                    isSymbolsPage2 = !isSymbolsPage2
+                }
                 updateKeyboardLayout()
             }
             "abc" -> {
@@ -2077,6 +2112,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                 if (isShifted && !isCapsLock) {
                     isShifted = false
                 }
+                wasLastKeySpace = false
                 updateShiftStateBasedOnContext()
                 updateKeyboardLayout()
             }
@@ -2094,98 +2130,260 @@ class GlideTypeKeyboardService : InputMethodService() {
                 else -> c.toString()
             }
         }
+        if (font == KeyboardFont.NEGATIVE_CIRCLED) {
+            return when (c) {
+                in 'A'..'Z' -> String(Character.toChars(0x1F150 + (c - 'A')))
+                in 'a'..'z' -> String(Character.toChars(0x1F150 + (c - 'a')))
+                in '1'..'9' -> String(Character.toChars(0x2776 + (c - '1')))
+                '0' -> "\u24FF"
+                else -> c.toString()
+            }
+        }
+        if (font == KeyboardFont.SQUARED) {
+            return when (c) {
+                in 'A'..'Z' -> String(Character.toChars(0x1F130 + (c - 'A')))
+                in 'a'..'z' -> String(Character.toChars(0x1F130 + (c - 'a')))
+                else -> c.toString()
+            }
+        }
+        if (font == KeyboardFont.NEGATIVE_SQUARED) {
+            return when (c) {
+                in 'A'..'Z' -> String(Character.toChars(0x1F170 + (c - 'A')))
+                in 'a'..'z' -> String(Character.toChars(0x1F170 + (c - 'a')))
+                else -> c.toString()
+            }
+        }
+        if (font == KeyboardFont.FULLWIDTH) {
+            return when (c) {
+                in 'A'..'Z' -> (0xFF21 + (c - 'A')).toChar().toString()
+                in 'a'..'z' -> (0xFF41 + (c - 'a')).toChar().toString()
+                in '0'..'9' -> (0xFF10 + (c - '0')).toChar().toString()
+                else -> c.toString()
+            }
+        }
+        if (font == KeyboardFont.SMALL_CAPS) {
+            val map = mapOf(
+                'a' to "ᴀ", 'b' to "ʙ", 'c' to "ᴄ", 'd' to "ᴅ", 'e' to "ᴇ", 'f' to "ғ", 'g' to "ɢ",
+                'h' to "ₕ", 'i' to "ɪ", 'j' to "ᴊ", 'k' to "ᴋ", 'l' to "ʟ", 'm' to "ᴍ", 'n' to "ɴ",
+                'o' to "ᴏ", 'p' to "ᴘ", 'q' to "ǫ", 'r' to "ʀ", 's' to "s", 't' to "ᴛ", 'u' to "ᴜ",
+                'v' to "ᴠ", 'w' to "ᴡ", 'x' to "x", 'y' to "ʏ", 'z' to "ᴢ",
+                'A' to "ᴀ", 'B' to "ʙ", 'C' to "ᴄ", 'D' to "ᴅ", 'E' to "ᴇ", 'F' to "ғ", 'G' to "ɢ",
+                'H' to "ₕ", 'I' to "ɪ", 'J' to "ᴊ", 'K' to "ᴋ", 'L' to "ʟ", 'M' to "ᴍ", 'N' to "ɴ",
+                'O' to "ᴏ", 'P' to "ᴘ", 'Q' to "ǫ", 'R' to "ʀ", 'S' to "s", 'T' to "ᴛ", 'U' to "ᴜ",
+                'V' to "ᴠ", 'W' to "ᴡ", 'X' to "x", 'Y' to "ʏ", 'Z' to "ᴢ"
+            )
+            return map[c] ?: c.toString()
+        }
+        if (font == KeyboardFont.PARENTHESIZED) {
+            return when (c) {
+                in 'A'..'Z' -> String(Character.toChars(0x249C + (c - 'A')))
+                in 'a'..'z' -> String(Character.toChars(0x249C + (c - 'a')))
+                in '1'..'9' -> (0x2474 + (c - '1')).toChar().toString()
+                else -> c.toString()
+            }
+        }
+        if (font == KeyboardFont.SUBSCRIPT) {
+            val map = mapOf(
+                'a' to "ₐ", 'e' to "ₑ", 'h' to "ₕ", 'i' to "ᵢ", 'j' to "ⱼ", 'k' to "ₖ", 'l' to "ₗ",
+                'm' to "ₘ", 'n' to "ₙ", 'o' to "ₒ", 'p' to "ₚ", 'r' to "ᵣ", 's' to "ₛ", 't' to "ₜ",
+                'u' to "ᵤ", 'v' to "ᵥ", 'x' to "ₓ",
+                '0' to "₀", '1' to "₁", '2' to "₂", '3' to "₃", '4' to "₄", '5' to "₅", '6' to "₆",
+                '7' to "₇", '8' to "₈", '9' to "₉"
+            )
+            return map[c.lowercaseChar()] ?: c.toString()
+        }
+        if (font == KeyboardFont.SUPERSCRIPT) {
+            val map = mapOf(
+                'a' to "ᵃ", 'b' to "ᵇ", 'c' to "ᶜ", 'd' to "ᵈ", 'e' to "ᵉ", 'f' to "ᶠ", 'g' to "ᵍ",
+                'h' to "ʰ", 'i' to "ⁱ", 'j' to "ʲ", 'k' to "ᵏ", 'l' to "ˡ", 'm' to "ᵐ", 'n' to "ⁿ",
+                'o' to "ᵒ", 'p' to "ᵖ", 'r' to "ʳ", 's' to "ˢ", 't' to "ᵗ", 'u' to "ᵘ", 'v' to "ᵛ",
+                'w' to "ʷ", 'x' to "ˣ", 'y' to "ʸ", 'z' to "ᶻ",
+                '0' to "⁰", '1' to "¹", '2' to "²", '3' to "³", '4' to "⁴", '5' to "⁵", '6' to "⁶",
+                '7' to "⁷", '8' to "⁸", '9' to "⁹"
+            )
+            return map[c.lowercaseChar()] ?: c.toString()
+        }
+        if (font == KeyboardFont.STRIKETHROUGH) return c.toString() + "\u0336"
+        if (font == KeyboardFont.SLASHED) return c.toString() + "\u0338"
+        if (font == KeyboardFont.UNDERLINE) return c.toString() + "\u0332"
+        if (font == KeyboardFont.DOUBLE_UNDERLINE) return c.toString() + "\u0333"
+        if (font == KeyboardFont.OVERLINE) return c.toString() + "\u0305"
+        if (font == KeyboardFont.DOTTED) return c.toString() + "\u0323"
+        if (font == KeyboardFont.WAVY) return c.toString() + "\u0330"
+        if (font == KeyboardFont.ZALGO) return c.toString() + "\u030d\u030e\u030f\u0311"
+        if (font == KeyboardFont.INVERTED) {
+            val map = mapOf(
+                'A' to "Ɐ", 'B' to "ᗺ", 'C' to "Ɔ", 'D' to "ᗡ", 'E' to "Ǝ", 'F' to "Ⅎ", 'G' to "⅁",
+                'J' to "Ր", 'K' to "ʞ", 'L' to "˥", 'M' to "W", 'R' to "ᴚ", 'T' to "⊥", 'U' to "∩",
+                'V' to "Ʌ", 'W' to "M", 'Y' to "⅄", 'a' to "ɐ", 'b' to "q", 'c' to "ɔ", 'd' to "p",
+                'e' to "ǝ", 'f' to "ɟ", 'g' to "ƃ", 'h' to "ɥ", 'i' to "ᵹ", 'j' to "ɾ", 'k' to "ʞ",
+                'm' to "ɯ", 'n' to "u", 'p' to "d", 'q' to "b", 'r' to "ɹ", 't' to "ʇ", 'u' to "n",
+                'v' to "ʌ", 'w' to "ʍ", 'y' to "ʎ"
+            )
+            return map[c] ?: c.toString()
+        }
+        if (font == KeyboardFont.REVERSED) {
+            val map = mapOf(
+                'A' to "ᗄ", 'B' to "ᗷ", 'C' to "Ɔ", 'D' to "ᗡ", 'E' to "Ǝ", 'F' to "Ⅎ", 'G' to "⅁",
+                'J' to "ᓀ", 'K' to "Ⱈ", 'L' to "⅃", 'N' to "ᴎ", 'P' to "Ԁ", 'Q' to "Ծ", 'R' to "Я",
+                'S' to "Ƨ", 'Y' to "ʏ", 'a' to "ɒ", 'b' to "d", 'c' to "ɔ", 'd' to "b", 'e' to "ɘ",
+                'f' to "ɟ", 'g' to "ɒ", 'h' to "ʜ", 'j' to "ᓀ", 'k' to "ʞ", 'p' to "q", 'q' to "p",
+                'r' to "ɿ", 's' to "ƨ", 't' to "ʇ", 'y' to "ʏ"
+            )
+            return map[c] ?: c.toString()
+        }
+        if (font == KeyboardFont.MORSE) {
+            val map = mapOf(
+                'A' to ".- ", 'B' to "-... ", 'C' to "-.-. ", 'D' to "-.. ", 'E' to ". ", 'F' to "..-. ", 'G' to "--. ",
+                'H' to ".... ", 'I' to ".. ", 'J' to ".--- ", 'K' to "-.- ", 'L' to ".-.. ", 'M' to "-- ", 'N' to "-. ",
+                'O' to "--- ", 'P' to ".--. ", 'Q' to "--.- ", 'R' to ".-. ", 'S' to "... ", 'T' to "- ", 'U' to "..- ",
+                'V' to "...- ", 'W' to ".-- ", 'X' to "-..- ", 'Y' to "-.-- ", 'Z' to "--.. ",
+                '0' to "----- ", '1' to ".---- ", '2' to "..--- ", '3' to "...-- ", '4' to "....- ", '5' to "..... ",
+                '6' to "-.... ", '7' to "--... ", '8' to "---.. ", '9' to "----. "
+            )
+            return map[c.uppercaseChar()] ?: c.toString()
+        }
+        if (font == KeyboardFont.FANCY_BRACKETS) return "【" + c + "】"
+        if (font == KeyboardFont.FANCY_ARROWS) return c.toString() + "➔"
+        if (font == KeyboardFont.FANCY_HEARTS) return c.toString() + "♥"
+        if (font == KeyboardFont.FANCY_STARS) return c.toString() + "★"
+        if (font == KeyboardFont.FANCY_SPARKLES) return c.toString() + "✨"
+        if (font == KeyboardFont.FANCY_SMILEY) return c.toString() + "☺"
+        if (font == KeyboardFont.DOUBLE_PARENTHESES) return "((" + c + "))"
+        if (font == KeyboardFont.CYBER) return "[" + c + "]"
+        if (font == KeyboardFont.STARLIGHT) return "★" + c + "★"
+        if (font == KeyboardFont.DIAMOND) return "♦" + c + "♦"
+        if (font == KeyboardFont.TSUNAMI) return "~" + c + "~"
+        if (font == KeyboardFont.DOUBLE_SLASH) return "//" + c + "//"
+        if (font == KeyboardFont.SLASH_BOX) return "/" + c + "/"
+        if (font == KeyboardFont.SHARP) return "#" + c + "#"
+        if (font == KeyboardFont.CROSSED) return c.toString() + "❌"
+
         return when (font) {
-            KeyboardFont.BOLD -> {
+            KeyboardFont.BOLD_SERIF -> {
                 when (c) {
-                    in 'A'..'Z' -> {
-                        val code = 0x1D400 + (c - 'A')
-                        String(Character.toChars(code))
-                    }
-                    in 'a'..'z' -> {
-                        val code = 0x1D41A + (c - 'a')
-                        String(Character.toChars(code))
-                    }
-                    in '0'..'9' -> {
-                        val code = 0x1D7CE + (c - '0')
-                        String(Character.toChars(code))
-                    }
+                    in 'A'..'Z' -> String(Character.toChars(0x1D400 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D41A + (c - 'a')))
+                    in '0'..'9' -> String(Character.toChars(0x1D7CE + (c - '0')))
                     else -> c.toString()
                 }
             }
-            KeyboardFont.ITALIC -> {
+            KeyboardFont.ITALIC_SERIF -> {
                 when (c) {
-                    in 'A'..'Z' -> {
-                        val code = 0x1D6A8 + (c - 'A')
-                        String(Character.toChars(code))
-                    }
-                    in 'a'..'z' -> {
-                        val code = 0x1D6C2 + (c - 'a')
-                        String(Character.toChars(code))
-                    }
-                    in '0'..'9' -> {
-                        val code = 0x1D7E2 + (c - '0')
-                        String(Character.toChars(code))
-                    }
+                    in 'A'..'Z' -> String(Character.toChars(0x1D434 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D44E + (c - 'a')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.BOLD_ITALIC_SERIF -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D468 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D482 + (c - 'a')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.MATH_BOLD_SANS -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D5A0 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D5BA + (c - 'a')))
+                    in '0'..'9' -> String(Character.toChars(0x1D7EC + (c - '0')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.MATH_ITALIC_SANS -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D608 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D622 + (c - 'a')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.MATH_BOLD_ITALIC_SANS -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D63C + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D656 + (c - 'a')))
                     else -> c.toString()
                 }
             }
             KeyboardFont.SCRIPT -> {
                 when (c) {
                     in 'A'..'Z' -> {
-                        val code = 0x1D4D0 + (c - 'A')
-                        String(Character.toChars(code))
+                        // script capitals have some anomalies in unicode standard
+                        val map = mapOf(
+                            'B' to "\u212C", 'E' to "\u2130", 'F' to "\u2131", 'H' to "\u210B",
+                            'I' to "\u2110", 'L' to "\u2112", 'M' to "\u2133", 'R' to "\u211B"
+                        )
+                        map[c] ?: String(Character.toChars(0x1D49C + (c - 'A')))
                     }
                     in 'a'..'z' -> {
-                        val code = 0x1D4EA + (c - 'a')
-                        String(Character.toChars(code))
+                        if (c == 'e') "\u212F" else if (c == 'g') "\u210A" else if (c == 'o') "\u2134"
+                        else String(Character.toChars(0x1D4B6 + (c - 'a')))
                     }
                     else -> c.toString()
                 }
             }
-            KeyboardFont.TYPEWRITER -> {
+            KeyboardFont.BOLD_SCRIPT -> {
                 when (c) {
-                    in 'A'..'Z' -> {
-                        val code = 0x1D670 + (c - 'A')
-                        String(Character.toChars(code))
-                    }
-                    in 'a'..'z' -> {
-                        val code = 0x1D68A + (c - 'a')
-                        String(Character.toChars(code))
-                    }
-                    in '0'..'9' -> {
-                        val code = 0x1D7F6 + (c - '0')
-                        String(Character.toChars(code))
-                    }
+                    in 'A'..'Z' -> String(Character.toChars(0x1D4D0 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D4EA + (c - 'a')))
                     else -> c.toString()
                 }
             }
             KeyboardFont.GOTHIC -> {
                 when (c) {
                     in 'A'..'Z' -> {
-                        val code = 0x1D504 + (c - 'A')
-                        String(Character.toChars(code))
+                        val map = mapOf('C' to "\u212D", 'H' to "\u210C", 'I' to "\u2111", 'R' to "\u211C", 'Z' to "\u2128")
+                        map[c] ?: String(Character.toChars(0x1D504 + (c - 'A')))
                     }
-                    in 'a'..'z' -> {
-                        val code = 0x1D51E + (c - 'a')
-                        String(Character.toChars(code))
-                    }
+                    in 'a'..'z' -> String(Character.toChars(0x1D51E + (c - 'a')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.BOLD_GOTHIC -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D5D4 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D5EE + (c - 'a')))
                     else -> c.toString()
                 }
             }
             KeyboardFont.OUTLINE -> {
                 when (c) {
                     in 'A'..'Z' -> {
-                        val code = 0x1D538 + (c - 'A')
-                        String(Character.toChars(code))
+                        val map = mapOf(
+                            'C' to "\u2102", 'H' to "\u210D", 'N' to "\u2115", 'P' to "\u2119",
+                            'Q' to "\u211A", 'R' to "\u211D", 'Z' to "\u2124"
+                        )
+                        map[c] ?: String(Character.toChars(0x1D538 + (c - 'A')))
                     }
-                    in 'a'..'z' -> {
-                        val code = 0x1D552 + (c - 'a')
-                        String(Character.toChars(code))
-                    }
-                    in '0'..'9' -> {
-                        val code = 0x1D7D8 + (c - '0')
-                        String(Character.toChars(code))
-                    }
+                    in 'a'..'z' -> String(Character.toChars(0x1D552 + (c - 'a')))
+                    in '0'..'9' -> String(Character.toChars(0x1D7D8 + (c - '0')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.TYPEWRITER -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D670 + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D68A + (c - 'a')))
+                    in '0'..'9' -> String(Character.toChars(0x1D7F6 + (c - '0')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.CURSIVE -> {
+                when (c) {
+                    in 'A'..'Z' -> String(Character.toChars(0x1D49C + (c - 'A')))
+                    in 'a'..'z' -> String(Character.toChars(0x1D4B6 + (c - 'a')))
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.PARENTHESIZED_DIGITS -> {
+                when (c) {
+                    in '1'..'9' -> (0x2474 + (c - '1')).toChar().toString()
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.NEGATIVE_CIRCLED_DIGITS -> {
+                when (c) {
+                    in '1'..'9' -> String(Character.toChars(0x2776 + (c - '1')))
+                    '0' -> "\u24FF"
                     else -> c.toString()
                 }
             }
@@ -2284,13 +2482,56 @@ class GlideTypeKeyboardService : InputMethodService() {
 
         val fonts = listOf(
             Pair(KeyboardFont.NORMAL, "Normal"),
-            Pair(KeyboardFont.BOLD, "𝐁𝐨𝐥𝐝"),
-            Pair(KeyboardFont.ITALIC, "𝘐𝘵𝘢𝘭𝘪𝘤"),
-            Pair(KeyboardFont.SCRIPT, "𝓢𝓬𝓻𝓲𝓹𝓽"),
+            Pair(KeyboardFont.BOLD_SERIF, "𝐁𝐨𝐥𝐝 𝐒𝐞𝐫𝐢𝐟"),
+            Pair(KeyboardFont.ITALIC_SERIF, "𝘐𝘵𝘢𝘭𝘪𝘤 𝘚𝘦𝘳𝘪𝘧"),
+            Pair(KeyboardFont.BOLD_ITALIC_SERIF, "𝑩𝒐𝒍𝒅 𝑰𝒕𝒂𝒍𝒊𝒄"),
+            Pair(KeyboardFont.SCRIPT, "𝒮𝒸𝓇𝒾𝓅𝓉"),
+            Pair(KeyboardFont.BOLD_SCRIPT, "𝓢𝓬𝓻𝓲𝓹𝓽 𝓑𝓸𝓵𝓭"),
+            Pair(KeyboardFont.GOTHIC, "𝔊𝔬𝔱𝔥𝔦𝔠"),
+            Pair(KeyboardFont.BOLD_GOTHIC, "𝕲𝖔𝖙𝖍𝖎𝖈 𝕭𝖔𝖑𝖉"),
+            Pair(KeyboardFont.OUTLINE, "𝕆𝕦𝕥𝕝𝕚𝕟𝕖"),
             Pair(KeyboardFont.TYPEWRITER, "𝚃𝚢𝚙𝚎𝚠𝚛𝚒𝚝𝚎𝚛"),
             Pair(KeyboardFont.CIRCLED, "Ⓒⓘⓡⓒⓛⓔⓓ"),
-            Pair(KeyboardFont.GOTHIC, "𝔊𝔬𝔱𝔥𝔦𝔠"),
-            Pair(KeyboardFont.OUTLINE, "𝕆𝕦𝕥𝕝𝕚𝕟𝕖")
+            Pair(KeyboardFont.NEGATIVE_CIRCLED, "🅝🅔🅖🅐🅣🅘🅥🅔"),
+            Pair(KeyboardFont.SQUARED, "🅂🅄🅄🄰🅁🄴🄳"),
+            Pair(KeyboardFont.NEGATIVE_SQUARED, "🅽🅴🅶🆂🆀🆄"),
+            Pair(KeyboardFont.FULLWIDTH, "Ｆｕｌｌｗｉｄｔｈ"),
+            Pair(KeyboardFont.SMALL_CAPS, "sᴍᴀʟʟ ᴄᴀᴘs"),
+            Pair(KeyboardFont.PARENTHESIZED, "⒫⒜⒭⒠⒩⒯⒣"),
+            Pair(KeyboardFont.SUBSCRIPT, "ₛᵤ₆ₛ꜀ᵣᵢₚₜ"),
+            Pair(KeyboardFont.SUPERSCRIPT, "ˢᵘᵖᵉʳˢᶜʳⁱᵖᵗ"),
+            Pair(KeyboardFont.STRIKETHROUGH, "S̶t̶r̶i̶k̶e̶"),
+            Pair(KeyboardFont.SLASHED, "S̷l̷a̷s̷h̷e̷d̷"),
+            Pair(KeyboardFont.UNDERLINE, "U̲n̲d̲e̲r̲l̲i̲n̲e̲"),
+            Pair(KeyboardFont.DOUBLE_UNDERLINE, "D̳o̳u̳b̳l̳e̳"),
+            Pair(KeyboardFont.OVERLINE, "O̅v̅e̅r̅l̅i̅n̅e̅"),
+            Pair(KeyboardFont.DOTTED, "Ḍọṭṭẹḍ"),
+            Pair(KeyboardFont.WAVY, "W̰a̰v̰y̰"),
+            Pair(KeyboardFont.ZALGO, "Z̶A̶L̶G̶O̶"),
+            Pair(KeyboardFont.INVERTED, "ʇɹǝʌuI"),
+            Pair(KeyboardFont.REVERSED, "bɘꙅɿɘvɘᴙ"),
+            Pair(KeyboardFont.MORSE, "-- --- .-. ... ."),
+            Pair(KeyboardFont.FANCY_BRACKETS, "【B】【r】【a】"),
+            Pair(KeyboardFont.FANCY_ARROWS, "A➔r➔r➔"),
+            Pair(KeyboardFont.FANCY_HEARTS, "H♥e♥a♥"),
+            Pair(KeyboardFont.FANCY_STARS, "S★t★a★"),
+            Pair(KeyboardFont.FANCY_SPARKLES, "S✨p✨a✨"),
+            Pair(KeyboardFont.FANCY_SMILEY, "S☺m☺i☺"),
+            Pair(KeyboardFont.MATH_BOLD_SANS, "𝗕𝗼𝗹𝗱 𝗦𝗮𝗻𝘀"),
+            Pair(KeyboardFont.MATH_ITALIC_SANS, "𝘐𝘵𝘢𝘭𝘪𝘤 𝘚𝘢𝘯𝘴"),
+            Pair(KeyboardFont.MATH_BOLD_ITALIC_SANS, "𝘽𝒐𝒍𝒅 𝙄𝒕𝒂𝒍𝘪𝙘 𝙎𝒂𝒏𝒔"),
+            Pair(KeyboardFont.CURSIVE, "𝒸𝓊𝓇𝓈𝒾𝓋𝑒"),
+            Pair(KeyboardFont.PARENTHESIZED_DIGITS, "⑴⑵⑶"),
+            Pair(KeyboardFont.NEGATIVE_CIRCLED_DIGITS, "❶❷❸"),
+            Pair(KeyboardFont.DOUBLE_PARENTHESES, "((D))((P))"),
+            Pair(KeyboardFont.CYBER, "[C][y][b]"),
+            Pair(KeyboardFont.STARLIGHT, "★S★T★"),
+            Pair(KeyboardFont.DIAMOND, "♦D♦I♦"),
+            Pair(KeyboardFont.TSUNAMI, "~T~S~"),
+            Pair(KeyboardFont.DOUBLE_SLASH, "//S//L//"),
+            Pair(KeyboardFont.SLASH_BOX, "/S/B/"),
+            Pair(KeyboardFont.SHARP, "#S#H#"),
+            Pair(KeyboardFont.CROSSED, "C❌r❌")
         )
 
         for (f in fonts) {
@@ -2324,7 +2565,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         return root
     }
 
-    private fun getHintForKey(key: String): String? {
+    private fun getHintForKey(key: String): String? {    private fun getHintForKey(key: String): String? {
         if (key.length != 1) return null
         val c = key.first().lowercaseChar()
         return when (c) {
@@ -2563,22 +2804,51 @@ class GlideTypeKeyboardService : InputMethodService() {
                             background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                         }
                         textView.text = categoryEmojis[position]
-                        textView.setOnClickListener {
-                            vibrateClick()
-                            playClick(100)
+                        var emojiRunnable: Runnable? = null
+                        textView.setOnTouchListener { v, event ->
                             val selectedEmoji = categoryEmojis[position]
-                            addRecentEmoji(selectedEmoji)
-                            if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
-                                val et = translationInputField!!
-                                val start = et.selectionStart
-                                val end = et.selectionEnd
-                                et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
-                            } else {
-                                currentInputConnection?.commitText(selectedEmoji, 1)
+                            when (event.action) {
+                                MotionEvent.ACTION_DOWN -> {
+                                    vibrateClick()
+                                    playClick(100)
+                                    addRecentEmoji(selectedEmoji)
+                                    if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                                        val et = translationInputField!!
+                                        val start = et.selectionStart
+                                        val end = et.selectionEnd
+                                        et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
+                                    } else {
+                                        currentInputConnection?.commitText(selectedEmoji, 1)
+                                    }
+                                    if (categoryIndex == 0) {
+                                        loadEmojiGrid(categoryIndex)
+                                    }
+
+                                    emojiRunnable = object : Runnable {
+                                        override fun run() {
+                                            vibrateClick()
+                                            playClick(100)
+                                            if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                                                val et = translationInputField!!
+                                                val start = et.selectionStart
+                                                val end = et.selectionEnd
+                                                et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
+                                            } else {
+                                                currentInputConnection?.commitText(selectedEmoji, 1)
+                                            }
+                                            handler.postDelayed(this, 120)
+                                        }
+                                    }
+                                    handler.postDelayed(emojiRunnable!!, 400)
+                                    v.isPressed = true
+                                }
+                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                    emojiRunnable?.let { handler.removeCallbacks(it) }
+                                    emojiRunnable = null
+                                    v.isPressed = false
+                                }
                             }
-                            if (categoryIndex == 0) {
-                                loadEmojiGrid(categoryIndex)
-                            }
+                            true
                         }
                         return textView
                     }
