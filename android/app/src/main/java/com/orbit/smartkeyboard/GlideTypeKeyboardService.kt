@@ -1603,6 +1603,7 @@ class GlideTypeKeyboardService : InputMethodService() {
             setOnClickListener {
                 vibrateClick()
                 clearClipboard(true)
+            }
         }
         clipToolbar.addView(clearUnpinnedBtn)
 
