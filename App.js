@@ -13,6 +13,7 @@ import {
   Switch,
   Keyboard,
   Dimensions,
+  Alert,
 } from 'react-native';
 
 const { FloatingBubble } = NativeModules;
