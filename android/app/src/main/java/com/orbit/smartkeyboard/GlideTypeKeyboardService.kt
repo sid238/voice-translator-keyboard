@@ -43,6 +43,10 @@ class GlideTypeKeyboardService : InputMethodService() {
     private lateinit var keyboardContainer: FrameLayout
     private var currentViewMode = ViewMode.QWERTY
     private var isShifted = false
+    private var isCapsLock = false
+    private var lastShiftPressTime: Long = 0
+    private var translationInputField: EditText? = null
+    private var longPressDelayMs = 400
     private var keyboardHeightDp = 270 // Default keyboard height
 
     // Settings fields (synced from SharedPrefs)
@@ -149,22 +153,23 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     // All emoji categories sorted nicely
     private val emojiCategories = listOf(
-        Pair("☺", listOf(
+        Pair(R.drawable.ic_emoji_people, listOf(
             "😀", "😁", "😂", "🤣", "😃", "😄", "😅", "😆", "😉", "😊", "😋", "😎",
             "😍", "😘", "😗", "😙", "😚", "🙂", "🤗", "🤩", "🤔", "🤨", "😐", "😑",
             "😶", "🙄", "😏", "😣", "😥", "😮", "🤐", "😯", "😪", "😫", "😴", "😌",
             "😛", "😜", "🤪", "😝", "🤤", "😒", "😓", "😔", "😕", "🙃", "🤑", "😲",
             "☹️", "🙁", "😖", "😞", "😟", "😤", "😢", "😭", "😦", "😧", "😨", "😩",
             "🤯", "😬", "😰", "😱", "🥵", "🥶", "😳", "😵", "😡", "😠", "🤬",
-            "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "😇", "🤠", "🥳", "🥴", "🥺"
+            "😷", "🤒", "🤕", "🤢", "🤮", "🤧", "😇", "🤠", "🥳", "🥴", "🥺",
+            "🥱", "🧑‍💻", "🥷", "🫂", "🧏", "🙋", "💁", "🧘"
         )),
-        Pair("👋", listOf(
+        Pair(R.drawable.ic_emoji_gestures, listOf(
             "👋", "🤚", "🖐️", "✋", "🖖", "👌", "🤌", "🤏", "✌️", "🤞", "🤟", "🤘",
             "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "👍", "👎", "✊", "👊", "🤛",
             "🤜", "👏", "🙌", "👐", "🤲", "🤝", "🙏", "✍️", "💅", "🤳", "💪", "🦾",
             "🦵", "🦶", "👂", "👃", "🧠", "👀", "👅", "👄", "💋", "🩸"
         )),
-        Pair("🐱", listOf(
+        Pair(R.drawable.ic_emoji_nature, listOf(
             "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮",
             "🐷", "🐽", "🐸", "🐵", "🙈", "🙉", "🙊", "🐒", "🐔", "🐧", "🐦", "🐤",
             "🐣", "🐥", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛",
@@ -172,56 +177,52 @@ class GlideTypeKeyboardService : InputMethodService() {
             "🐙", "🦑", "🦞", "🦀", "🐡", "🐠", "🐟", "🐬", "🐳", "🐋", "🦈", "🐊",
             "🐅", "🐆", "🦓", "🦍", "🐘", "🦛", "🦏", "🐪", "🐫", "🦒", "🦘", "🐎",
             "🐖", "🐏", "🐑", "🐐", "🦌", "🐕", "🐈", "🐓", "🦃", "🦢", "🦩", "🕊️",
-            "🐇", "🦝", "🦡", "🦦", "🦥", "🐿️", "🦔", "🐾", "🐉", "🌵", "🎄", "🌲",
-            "🌳", "🌴", "🌱", "🌿", "🍀", "🎍", "🍃", "🍂", "🍁", "🍄", "🌹", "🌸"
+            "🐇", "🦝", "🦡", "🦦", "🦥", "🐿️", "🦔", "🐾", "🐉", "🦖", "🦕", "🦧", "🦮", "🐕‍🦺", "🦫", "🦬", "🦣", "🦤", "🦚", "🦜", "🦠"
         )),
-        Pair("🍔", listOf(
+        Pair(R.drawable.ic_emoji_food, listOf(
             "🍏", "🍎", "🍊", "🍋", "🍌", "🍉", "🍇", "🍓", "🍒", "🍑", "🥭", "🍍",
-            "🥥", "🥝", "🍅", "茄", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🌽", "🥕",
-            "洋", "🧅", "蒜", "🧄", "🍄", "🥜", "栗", "🌰", "面包", "🍞", "🥐", "🥖",
+            "🥥", "🥝", "🍅", "🍆", "🥑", "🥦", "🥬", "🥒", "🌶️", "🌽", "🥕",
+            "🧅", "🧄", "🍄", "🥜", "🌰", "🍞", "🥐", "🥖",
             "🥨", "🥯", "🥞", "🧇", "🧀", "🍖", "🍗", "🥩", "🥓", "🍔", "🍟", "🍕",
             "🌭", "🥪", "🌮", "🌯", "🥙", "🧆", "🥚", "🍳", "🥘", "🍲", "🥣", "🥗",
             "🍿", "🧈", "🧂", "🍱", "🍘", "🍙", "🍚", "🍛", "🍜", "🍝", "🍢", "🍣",
             "🍤", "🍥", "🍡", "🥟", "🍦", "🍧", "🍨", "🍩", "🍪", "🎂", "🍰", "🧁",
-            "🥧", "🍫", "🍬", "🍭", "🍮", "🍯", "🍼", "🥛", "☕️", "🍵", "🍶", "酒",
+            "🥧", "🍫", "🍬", "🍭", "🍮", "🍯", "🍼", "🥛", "☕️", "🍵", "🍶",
             "🍷", "🍸", "🍹", "🍺", "🍻", "🥂", "🥃", "🥤", "🧋", "🧃", "🧊"
         )),
-        Pair("⚽", listOf(
-            "⚽️", "🏀", "🏈", "⚾️", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "", "",
-            "", "", "", "", "", "", "🏹", "🏹", "🎣", "🤿", "🥊", "🥋",
-            "🥅", "⛳️", "⛸️", "🎿", "🛷", "", "🎯", "", "🎮", "🕹️", "🎰", "🎲",
-            "🧩", "🧸", "", "", "", "🎨", "🧵", "🪡", "🧶", "🎹", "🥁", "🎷",
+        Pair(R.drawable.ic_emoji_activity, listOf(
+            "⚽️", "🏀", "🏈", "⚾️", "🥎", "🎾", "🏐", "🏉", "🎱", "🪀", "🏹", "🎣", "🤿", "🥊", "🥋",
+            "🥅", "⛳️", "⛸️", "🎿", "🛷", "🎯", "🎮", "🕹️", "🎰", "🎲",
+            "🧩", "🧸", "🎨", "🧵", "🪡", "🎹", "🥁", "🎷",
             "🎺", "🎸", "🪕", "🎻", "🎬", "🎤", "🎧", "🎼"
         )),
-        Pair("🚗", listOf(
+        Pair(R.drawable.ic_emoji_travel, listOf(
             "🚗", "🚕", "🚙", "🚌", "🚎", "🏎️", "🚓", "🚑", "🚒", "🚐", "🛻", "🚚",
-            "🚛", "🚜", "🛵", "🏍️", "🛺", "🚲", "🛴", "🛹", "🛼", "🚨", "🚔", "🚍",
+            "🚛", "🚜", "🛵", "🏍️", "🛺", "🚲", "🛴", "skateboard", "🛼", "🚨", "🚔", "🚍",
             "🚘", "🚖", "🚡", "🚠", "🚟", "🚃", "🚋", "🚞", "🚝", "🚄", "🚅", "🚈",
             "🚂", "🚆", "🚇", "🚊", "🚉", "✈️", "🛫", "🛬", "🛩️", "💺", "🛰️", "🚀",
             "🛸", "🚁", "🛶", "⛵️", "🚤", "🛥️", "🛳️", "⛴️", "🚢", "⚓️", "🛟", "🚧",
-            "阻", "⛽️", "🚏", "🗺️", "🗿", "🗿", "🗼", "🏰", "🏯", "🏟️", "🎡", "🎢",
-            "🎠", "⛲️", "⛱️", "🏖️", "🏝️", "🏜️", "🌋", "⛰️", "🏔️", "🗻", "🏕️", "⛺️"
+            "⛽️", "🚏", "🗺️", "🗼", "🏰", "🏯", "🏟️", "🎡", "🎢",
+            "🎠", "⛲️", "⛱️", "🏖️", "🏝️", "🏜️", "🌋", "⛰️", "🏔️", "🗻", "🏕️", "⛺️",
+            "🛞", "🪨", "🛖", "🪧"
         )),
-        Pair("💡", listOf(
+        Pair(R.drawable.ic_emoji_objects, listOf(
             "⌚️", "📱", "💻", "⌨️", "🖱️", "🖲️", "🗜️", "💾", "💿", "📀", "📼", "📷",
             "📸", "📹", "🎥", "📽️", "🎞️", "📞", "📟", "📠", "📺", "📻", "🎙️", "🎚️",
             "🎛️", "🧭", "⏱️", "⏰", "🕰️", "⏳", "⌛️", "📡", "🔋", "🔌", "💡", "🔦",
             "🕯️", "🪔", "🧯", "🛢️", "💸", "💵", "💴", "💶", "💷", "🪙", "💰", "💳",
-            "💎", "⚖️", "🪜", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🪚", "🔩", "⚙️", "砖",
+            "💎", "⚖️", "🪜", "🔧", "🔨", "⚒️", "🛠️", "⛏️", "🪚", "⚙️",
             "🧱", "⛓️", "🧲", "🛡️", "🚬", "⚰️", "🏺", "🔮", "🪬", "💈", "🔬", "🔭",
-            "针", "💉", "🩸", "💊", "🩹", "🩺", "🚪", "🛗", "🪟", "🛏️", "🛋️", "🪑",
+            "💉", "🩸", "💊", "🩹", "🩺", "🚪", "🛗", "🪟", "🛏️", "🛋️", "🪑",
             "🪠", "🚿", "🛁", "🛀", "🪤", "🪒", "🧴", "🧷", "🧹", "🧺", "🧻", "🧼",
-            "🪥", "🧽", "🪣", "键", "🔑", "🗝️", "🔐", "🔏", "🔒", "🔓"
+            "🪥", "🧽", "🪣", "🔑", "🗝️", "🔐", "🔏", "🔒", "🔓", "🪃", "🪗", "🪘", "🪞", "🪦"
         )),
-        Pair("❤️", listOf(
+        Pair(R.drawable.ic_emoji_symbols, listOf(
             "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕",
             "💞", "💓", "💗", "💖", "💘", "💝", "☮️", "✝️", "☪️", "🕉️", "☸️", "✡️",
             "🔯", "🕎", "☯️", "☦️", "🛐", "⛎", "🪯", "♈️", "♉️", "♊️", "♋️", "♌️",
             "♍️", "♎️", "♏️", "♐️", "♑️", "♒️", "♓️", "🔀", "🔁", "🔂", "▶️", "⏩",
-            "⏭️", "⏯️", "◀️", "⏪", "⏮️", "🔼", "⏫", "🔽", "⏬", "⏸️", "⏹️", "⏺️",
-            "🎦", "📶", "🔄", "🔙", "🔚", "🔛", "🆗", "🆙", "🆒", "🆕", "🆓", "➕",
-            "➖", "➗", "✖️", "♾️", "💲", "💱", "™️", "ℹ️", "🛑", "⚪️", "⚫️", "🔴",
-            "🔵", "🏁", "🚩", "🎌", "🏴"
+            "⚧️", "🧿", "🪬"
         ))
     )
 
@@ -269,6 +270,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
+        longPressDelayMs = prefs.getInt("long_press_delay", 400)
 
         // Set theme colors based on loaded settings
         when (themeName) {
@@ -466,6 +468,56 @@ class GlideTypeKeyboardService : InputMethodService() {
             )
         }
 
+        val dragHandle = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(10)
+            )
+            setBackgroundColor(Color.parseColor(themeBgColor))
+            val line = View(this@GlideTypeKeyboardService).apply {
+                background = createKeyDrawable(Color.parseColor("#444444"), dpToPx(2))
+                layoutParams = FrameLayout.LayoutParams(dpToPx(40), dpToPx(3)).apply {
+                    gravity = Gravity.CENTER
+                }
+            }
+            addView(line)
+        }
+        var dragStartY = 0f
+        var dragStartHeight = 0
+        dragHandle.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartY = event.rawY
+                    dragStartHeight = keyboardHeightDp
+                    vibrateClick()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.rawY - dragStartY
+                    val density = resources.displayMetrics.density
+                    val deltaDp = (deltaY / density).toInt()
+                    val newHeight = (dragStartHeight - deltaDp).coerceIn(180, 420)
+                    if (newHeight != keyboardHeightDp) {
+                        keyboardHeightDp = newHeight
+                        val rootParams = keyboardContainer.layoutParams
+                        rootParams.height = dpToPx(keyboardHeightDp)
+                        keyboardContainer.layoutParams = rootParams
+                        keyboardContainer.requestLayout()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    prefs.edit().putInt(PREF_KEY_HEIGHT, keyboardHeightDp).apply()
+                    vibrateClick()
+                    updateKeyboardLayout()
+                    true
+                }
+                else -> false
+            }
+        }
+        mainLayout.addView(dragHandle)
+
         if (isTranslationActive) {
             mainLayout.addView(createTranslationToolbar())
         } else {
@@ -548,7 +600,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             }
                         }
                         
-                        handler.postDelayed(longPressRunnable, 400)
+                        handler.postDelayed(longPressRunnable, longPressDelayMs.toLong())
                     }
                     MotionEvent.ACTION_MOVE -> {
                         if (!isGesture) {
@@ -1099,7 +1151,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 keyLongPressed = false
                                 v.isPressed = true
                                 showKeyPreview(v, key)
-                                handler.postDelayed(keyLongPressRunnable, 400)
+                                handler.postDelayed(keyLongPressRunnable, longPressDelayMs.toLong())
                             }
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(keyLongPressRunnable)
@@ -1142,10 +1194,75 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun handleKeyPress(key: String) {
+        if (isTranslationActive && translationInputField != null) {
+            val et = translationInputField!!
+            val start = et.selectionStart
+            val end = et.selectionEnd
+            when (key.lowercase()) {
+                "back", "⌫" -> {
+                    if (start > 0 || end > 0) {
+                        if (start != end) {
+                            et.text.delete(Math.min(start, end), Math.max(start, end))
+                        } else {
+                            et.text.delete(start - 1, start)
+                        }
+                    }
+                }
+                "enter", "↵" -> {
+                    currentInputConnection?.finishComposingText()
+                    isTranslationActive = false
+                    updateKeyboardLayout()
+                }
+                "spacebar", " ", "␣" -> {
+                    et.text.replace(Math.min(start, end), Math.max(start, end), " ")
+                }
+                "shift", "⇧", "⇪" -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastShiftPressTime < 300) {
+                        isCapsLock = !isCapsLock
+                        isShifted = isCapsLock
+                    } else {
+                        isCapsLock = false
+                        isShifted = !isShifted
+                    }
+                    lastShiftPressTime = now
+                    updateKeyboardLayout()
+                }
+                "?123" -> {
+                    currentViewMode = ViewMode.SYMBOLS
+                    updateKeyboardLayout()
+                }
+                "abc" -> {
+                    currentViewMode = ViewMode.QWERTY
+                    updateKeyboardLayout()
+                }
+                "😊", "☺", "😀" -> {
+                    currentViewMode = ViewMode.EMOJIS
+                    updateKeyboardLayout()
+                }
+                else -> {
+                    et.text.replace(Math.min(start, end), Math.max(start, end), key)
+                    if (isShifted && !isCapsLock) {
+                        isShifted = false
+                        updateKeyboardLayout()
+                    }
+                }
+            }
+            return
+        }
+
         val ic = currentInputConnection ?: return
         when (key.lowercase()) {
             "shift", "⇧", "⇪" -> {
-                isShifted = !isShifted
+                val now = System.currentTimeMillis()
+                if (now - lastShiftPressTime < 300) {
+                    isCapsLock = !isCapsLock
+                    isShifted = isCapsLock
+                } else {
+                    isCapsLock = false
+                    isShifted = !isShifted
+                }
+                lastShiftPressTime = now
                 updateKeyboardLayout()
             }
             "back", "⌫" -> {
@@ -1172,7 +1289,7 @@ class GlideTypeKeyboardService : InputMethodService() {
             }
             else -> {
                 ic.commitText(key, 1)
-                if (isShifted) {
+                if (isShifted && !isCapsLock) {
                     isShifted = false
                     updateKeyboardLayout()
                 }
@@ -1391,13 +1508,14 @@ class GlideTypeKeyboardService : InputMethodService() {
 
         for (i in emojiCategories.indices) {
             val category = emojiCategories[i]
-            val tabIcon = category.first
+            val resId = category.first
             val isActive = i == currentEmojiCategoryIndex
 
-            val tabView = TextView(this).apply {
-                text = tabIcon
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-                gravity = Gravity.CENTER
+            val tabView = ImageView(this).apply {
+                setImageResource(resId)
+                setColorFilter(Color.WHITE)
+                val pad = dpToPx(6)
+                setPadding(pad, pad, pad, pad)
                 background = createKeyDrawable(
                     if (isActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT,
                     dpToPx(4)
@@ -1414,7 +1532,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     vibrateClick()
                     currentEmojiCategoryIndex = i
                     for (childIdx in 0 until tabContainer.childCount) {
-                        val child = tabContainer.getChildAt(childIdx) as? TextView
+                        val child = tabContainer.getChildAt(childIdx) as? ImageView
                         if (child != null) {
                             val active = childIdx == currentEmojiCategoryIndex
                             child.background = createKeyDrawable(
@@ -1485,9 +1603,32 @@ class GlideTypeKeyboardService : InputMethodService() {
             setOnClickListener {
                 vibrateClick()
                 clearClipboard(true)
-            }
         }
         clipToolbar.addView(clearUnpinnedBtn)
+
+        val backspaceBtn = FrameLayout(this).apply {
+            background = createKeyDrawable(Color.parseColor("#2E2E2E"), dpToPx(4))
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(40), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                setMargins(dpToPx(8), 0, 0, 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                playClick(android.view.KeyEvent.KEYCODE_DEL)
+                currentInputConnection?.deleteSurroundingText(1, 0)
+            }
+        }
+        val backspaceIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_backspace)
+            setColorFilter(Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        backspaceBtn.addView(backspaceIcon)
+        clipToolbar.addView(backspaceBtn)
+
         rootLayout.addView(clipToolbar)
 
         val listLayout = LinearLayout(this).apply {
@@ -1662,6 +1803,7 @@ class GlideTypeKeyboardService : InputMethodService() {
             layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
             setOnClickListener {
                 vibrateClick()
+                translationInputField = null
                 isTranslationActive = false
                 currentInputConnection?.finishComposingText()
                 updateKeyboardLayout()
@@ -1707,6 +1849,8 @@ class GlideTypeKeyboardService : InputMethodService() {
         toolbar.addView(targetBtn)
 
         val inputField = EditText(this).apply {
+            translationInputField = this
+            showSoftInputOnFocus = false
             hint = "Type here..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
@@ -1745,6 +1889,32 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
         toolbar.addView(inputField)
 
+        val voiceTranslateBtn = FrameLayout(this).apply {
+            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(30)).apply {
+                setMargins(0, 0, dpToPx(4), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                if (isListening) {
+                    stopVoiceInput()
+                } else {
+                    startVoiceInput()
+                }
+            }
+        }
+        val voiceTranslateIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_mic)
+            setColorFilter(if (isListening) Color.parseColor(themeAccentColor) else Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        voiceTranslateBtn.addView(voiceTranslateIcon)
+        toolbar.addView(voiceTranslateBtn)
+
         val sendBtn = Button(this).apply {
             text = "✓"
             setTextColor(Color.WHITE)
@@ -1757,6 +1927,9 @@ class GlideTypeKeyboardService : InputMethodService() {
                 vibrateClick()
                 currentInputConnection?.finishComposingText()
                 inputField.setText("")
+                translationInputField = null
+                isTranslationActive = false
+                updateKeyboardLayout()
             }
         }
         toolbar.addView(sendBtn)
@@ -1883,7 +2056,14 @@ class GlideTypeKeyboardService : InputMethodService() {
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
-                            currentInputConnection?.commitText(text + " ", 1)
+                            if (isTranslationActive && translationInputField != null) {
+                                val et = translationInputField!!
+                                val start = et.selectionStart
+                                val end = et.selectionEnd
+                                et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                            } else {
+                                currentInputConnection?.commitText(text + " ", 1)
+                            }
                         }
                         isListening = false
                         updateKeyboardLayout()
