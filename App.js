@@ -46,6 +46,7 @@ export default function App() {
 
   // Other fields
   const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [selectedLanguages, setSelectedLanguages] = useState(['en']);
   const [autoCap, setAutoCap] = useState(true);
   const [doubleSpacePeriod, setDoubleSpacePeriod] = useState(true);
   const [clipboardLimit, setClipboardLimit] = useState(100);
@@ -110,6 +111,9 @@ export default function App() {
           setTheme(t);
           const lang = await FloatingBubble.getStringSetting('selected_language', 'en');
           setSelectedLanguage(lang);
+          const langsStr = await FloatingBubble.getStringSetting('selected_languages', 'en');
+          const langsList = langsStr.split(',').filter(x => x.length > 0);
+          setSelectedLanguages(langsList.length > 0 ? langsList : ['en']);
           const escale = await FloatingBubble.getStringSetting('emoji_scale', 'medium');
           setEmojiScale(escale);
         }
@@ -467,7 +471,7 @@ export default function App() {
     switch (activeSection) {
       case 'language':
         title = 'Language & Layout';
-        desc = 'Select your default input language and custom keyboard character layout mapping.';
+        desc = 'Select multiple input languages and custom keyboard layouts to switch between.';
         content = (
           <View>
             {[
@@ -475,29 +479,40 @@ export default function App() {
               { id: 'hi_phonetic', name: 'Hindi Phonetic (Hinglish)', flag: '🇮🇳' },
               { id: 'es', name: 'Spanish QWERTY', flag: '🇪🇸' },
               { id: 'fr', name: 'French AZERTY', flag: '🇫🇷' },
-            ].map((lang) => (
-              <TouchableOpacity
-                key={lang.id}
-                style={[
-                  localStyles.settingItem,
-                  { borderBottomColor: selectedLanguage === lang.id ? colors.primary : colors.border }
-                ]}
-                onPress={() => {
-                  setSelectedLanguage(lang.id);
-                  saveStringPref('selected_language', lang.id);
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{lang.flag}</Text>
-                  <Text style={[localStyles.settingItemTitle, { color: selectedLanguage === lang.id ? colors.primary : colors.text }]}>
-                    {lang.name}
-                  </Text>
-                </View>
-                {selectedLanguage === lang.id && (
-                  <Text style={{ color: colors.primary, fontWeight: 'bold' }}>✓</Text>
-                )}
-              </TouchableOpacity>
-            ))}
+            ].map((lang) => {
+              const isSelected = selectedLanguages.includes(lang.id);
+              return (
+                <TouchableOpacity
+                  key={lang.id}
+                  style={[
+                    localStyles.settingItem,
+                    { borderBottomColor: isSelected ? colors.primary : colors.border }
+                  ]}
+                  onPress={() => {
+                    let newLangs = [...selectedLanguages];
+                    if (isSelected) {
+                      if (newLangs.length > 1) {
+                        newLangs = newLangs.filter(id => id !== lang.id);
+                      }
+                    } else {
+                      newLangs.push(lang.id);
+                    }
+                    setSelectedLanguages(newLangs);
+                    saveStringPref('selected_languages', newLangs.join(','));
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 20, marginRight: 12 }}>{lang.flag}</Text>
+                    <Text style={[localStyles.settingItemTitle, { color: isSelected ? colors.primary : colors.text }]}>
+                      {lang.name}
+                    </Text>
+                  </View>
+                  {isSelected && (
+                    <Text style={{ color: colors.primary, fontWeight: 'bold' }}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         );
         break;
@@ -1013,9 +1028,7 @@ export default function App() {
       { id: 'keyboard', title: 'Keyboard Settings', subtitle: 'Configure key spacing, delays, haptics, and row options', symbol: '⌨️' },
       { id: 'smartbar', title: 'Smartbar Configurations', subtitle: 'Choose buttons to place on the keyboard top bar', symbol: '🚀' },
       { id: 'typing', title: 'Typing & Corrections', subtitle: 'Configure auto-capitalizations, spacing, and suggest terms', symbol: '✍️' },
-      { id: 'gesture', title: 'Gesture & NeoType', subtitle: 'Set glide paths, track widths, and gesture switches', symbol: '〰️' },
       { id: 'clipboard', title: 'Clipboard History', subtitle: 'Adjust item retention, pinned storage caps, and clipboard actions', symbol: '📋' },
-      { id: 'emojis', title: 'Emoji & Symbols scale', subtitle: 'Select column layout grid sizes', symbol: '☺' },
       { id: 'addons', title: 'Addons & Extensions', subtitle: 'Integrate dictation speech tools and offline translators', symbol: '🧩' },
       { id: 'other', title: 'Other Settings', subtitle: 'Manage configuration backups, data wipes, and defaults', symbol: '⚙️' },
     ];

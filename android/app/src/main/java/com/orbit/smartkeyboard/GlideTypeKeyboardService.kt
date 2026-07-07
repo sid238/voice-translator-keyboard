@@ -55,12 +55,21 @@ class GlideTypeKeyboardService : InputMethodService() {
     private var isHindiPage2 = false
     private var customBgDrawable: android.graphics.drawable.Drawable? = null
     private var lastProcessedSystemClip: String? = null
+    private var isCtrlActive = false
+    private var isAltActive = false
+    private var autoCapEnabled = true
+    private var doubleSpacePeriodEnabled = true
+    private var suggestionsEnabled = true
+    private var keySpacingDp = 4
+    private var lastSpacePressTime: Long = 0
+    private val selectedLanguages = mutableListOf<String>()
+    private var activeLanguageIndex = 0
 
     // Settings fields (synced from SharedPrefs)
     private var vibrationEnabled = true
     private var soundEnabled = false
     private var numberRowEnabled = true
-    private var gestureEnabled = true
+    private var gestureEnabled = false
     private var themeName = "purple"
     private var translationFeatureEnabled = true
     private var voiceDictationEnabled = true
@@ -123,6 +132,7 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     data class ClipboardItem(
         val text: String,
+        val imageUri: String? = null,
         var isPinned: Boolean = false,
         val timestamp: Long = System.currentTimeMillis()
     )
@@ -289,11 +299,26 @@ class GlideTypeKeyboardService : InputMethodService() {
         vibrationEnabled = prefs.getBoolean("vibration_enabled", true)
         soundEnabled = prefs.getBoolean("sound_enabled", false)
         numberRowEnabled = prefs.getBoolean("number_row_enabled", true)
-        gestureEnabled = prefs.getBoolean("gesture_enabled", true)
+        gestureEnabled = false
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
         longPressDelayMs = prefs.getInt("long_press_delay_ms", 400)
+
+        autoCapEnabled = prefs.getBoolean("auto_cap", true)
+        doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
+        suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 4)
+
+        val langsStr = prefs.getString("selected_languages", "en") ?: "en"
+        selectedLanguages.clear()
+        selectedLanguages.addAll(langsStr.split(",").filter { it.isNotEmpty() })
+        if (selectedLanguages.isEmpty()) {
+            selectedLanguages.add("en")
+        }
+        if (activeLanguageIndex >= selectedLanguages.size) {
+            activeLanguageIndex = 0
+        }
 
         val themeImagePath = prefs.getString("theme_image_path", null)
         customBgDrawable = if (themeImagePath != null) {
@@ -367,6 +392,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     clipboardHistory.add(
                         ClipboardItem(
                             text = obj.getString("text"),
+                            imageUri = obj.optString("imageUri", null),
                             isPinned = obj.optBoolean("isPinned", false),
                             timestamp = obj.optLong("timestamp", System.currentTimeMillis())
                         )
@@ -375,14 +401,14 @@ class GlideTypeKeyboardService : InputMethodService() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-        }
-        if (clipboardHistory.isEmpty()) {
+        } else {
             clipboardHistory.add(
                 ClipboardItem(
                     text = "Welcome to Orbit Keyboard! Tap to paste, pin items to save them permanently.",
                     isPinned = true
                 )
             )
+            savePreferences()
         }
     }
 
@@ -397,6 +423,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         for (item in clipboardHistory) {
             val obj = JSONObject().apply {
                 put("text", item.text)
+                if (item.imageUri != null) put("imageUri", item.imageUri)
                 put("isPinned", item.isPinned)
                 put("timestamp", item.timestamp)
             }
@@ -404,6 +431,30 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
         editor.putString(PREF_KEY_CLIPBOARD, array.toString())
         editor.apply()
+    }
+
+    private fun switchToNextLanguage() {
+        if (selectedLanguages.isEmpty()) return
+        activeLanguageIndex = (activeLanguageIndex + 1) % selectedLanguages.size
+        applyActiveLanguage()
+    }
+
+    private fun applyActiveLanguage() {
+        val activeLang = if (activeLanguageIndex in selectedLanguages.indices) selectedLanguages[activeLanguageIndex] else "en"
+        if (activeLang == "hi_phonetic") {
+            currentViewMode = ViewMode.HINDI
+            isHindiPage2 = false
+            Toast.makeText(this, "Hindi Keyboard", Toast.LENGTH_SHORT).show()
+        } else {
+            currentViewMode = ViewMode.QWERTY
+            val langName = when (activeLang) {
+                "fr" -> "French AZERTY"
+                "es" -> "Spanish QWERTY"
+                else -> "English QWERTY"
+            }
+            Toast.makeText(this, langName, Toast.LENGTH_SHORT).show()
+        }
+        updateKeyboardLayout()
     }
 
     private fun addRecentEmoji(emoji: String) {
@@ -427,16 +478,80 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
     }
 
+    private fun saveClipboardImageLocally(uriStr: String): String? {
+        try {
+            val context = this
+            val uri = android.net.Uri.parse(uriStr)
+            val resolver = context.contentResolver
+            resolver.openInputStream(uri)?.use { inputStream ->
+                val folder = java.io.File(context.cacheDir, "clipboard_images").apply { mkdirs() }
+                val destFile = java.io.File(folder, "img_${System.currentTimeMillis()}.jpg")
+                destFile.outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+                return destFile.absolutePath
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
+    }
+
+    private fun addClipboardImageItem(uriStr: String) {
+        val localPath = saveClipboardImageLocally(uriStr) ?: return
+        val existingIndex = clipboardHistory.indexOfFirst { it.imageUri == localPath }
+        val item = if (existingIndex != -1) {
+            clipboardHistory.removeAt(existingIndex)
+        } else {
+            ClipboardItem(text = "[Image]", imageUri = localPath)
+        }
+        insertAndLimitClipboardItem(item)
+    }
+
+    private fun insertAndLimitClipboardItem(item: ClipboardItem) {
+        if (item.isPinned) {
+            clipboardHistory.add(0, item)
+        } else {
+            val insertIndex = clipboardHistory.count { it.isPinned }
+            clipboardHistory.add(insertIndex, item)
+        }
+        if (clipboardHistory.size > 100) {
+            val lastUnpinnedIndex = clipboardHistory.indexOfLast { !it.isPinned }
+            if (lastUnpinnedIndex != -1) {
+                clipboardHistory.removeAt(lastUnpinnedIndex)
+            }
+        }
+        savePreferences()
+        if (currentViewMode == ViewMode.CLIPBOARD) {
+            updateKeyboardLayout()
+        }
+    }
+
     private fun fetchSystemClipboard() {
         try {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             if (clipboard.hasPrimaryClip()) {
                 val clipData = clipboard.primaryClip
                 if (clipData != null && clipData.itemCount > 0) {
-                    val text = clipData.getItemAt(0).text?.toString()?.trim()
-                    if (!text.isNullOrEmpty() && text != lastProcessedSystemClip) {
+                    val item = clipData.getItemAt(0)
+                    val text = item.text?.toString()?.trim()
+                    val uri = item.uri
+                    
+                    if (uri != null && clipData.description.hasMimeType("image/*")) {
+                        val uriStr = uri.toString()
+                        if (uriStr != lastProcessedSystemClip) {
+                            lastProcessedSystemClip = uriStr
+                            addClipboardImageItem(uriStr)
+                        }
+                    } else if (!text.isNullOrEmpty() && text != lastProcessedSystemClip) {
                         lastProcessedSystemClip = text
-                        addClipboardItem(text)
+                        val existingIndex = clipboardHistory.indexOfFirst { it.text == text && it.imageUri == null }
+                        val clipItem = if (existingIndex != -1) {
+                            clipboardHistory.removeAt(existingIndex)
+                        } else {
+                            ClipboardItem(text = text)
+                        }
+                        insertAndLimitClipboardItem(clipItem)
                     }
                 }
             }
@@ -497,6 +612,18 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     private fun deleteClipboardItem(item: ClipboardItem) {
         clipboardHistory.remove(item)
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (clipboard.hasPrimaryClip()) {
+                val clipData = clipboard.primaryClip
+                if (clipData != null && clipData.itemCount > 0) {
+                    val systemText = clipData.getItemAt(0).text?.toString()?.trim()
+                    if (systemText == item.text) {
+                        lastProcessedSystemClip = systemText
+                    }
+                }
+            }
+        } catch (e: Exception) {}
         savePreferences()
         if (currentViewMode == ViewMode.CLIPBOARD) {
             updateKeyboardLayout()
@@ -504,6 +631,16 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun clearClipboard(exceptPinned: Boolean) {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            if (clipboard.hasPrimaryClip()) {
+                val clipData = clipboard.primaryClip
+                if (clipData != null && clipData.itemCount > 0) {
+                    lastProcessedSystemClip = clipData.getItemAt(0).text?.toString()?.trim()
+                }
+            }
+        } catch (e: Exception) {}
+
         if (exceptPinned) {
             clipboardHistory.removeAll { !it.isPinned }
         } else {
@@ -561,7 +698,9 @@ class GlideTypeKeyboardService : InputMethodService() {
         } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
             mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
         } else {
-            mainLayout.addView(createToolbar())
+            if (suggestionsEnabled) {
+                mainLayout.addView(createToolbar())
+            }
         }
 
         val keyboardArea = FrameLayout(this).apply {
@@ -1294,13 +1433,33 @@ class GlideTypeKeyboardService : InputMethodService() {
             )
         }
 
+        val activeLang = if (activeLanguageIndex in selectedLanguages.indices) selectedLanguages[activeLanguageIndex] else "en"
+
         val row1 = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
-        val row2 = if (isShifted) listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
-                   else listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
-        val row3 = if (isShifted) listOf("spacer_half", "A", "S", "D", "F", "G", "H", "J", "K", "L", "spacer_half")
-                   else listOf("spacer_half", "a", "s", "d", "f", "g", "h", "j", "k", "l", "spacer_half")
-        val row4 = if (isShifted) listOf("Shift", "Z", "X", "C", "V", "B", "N", "M", "Back")
-                   else listOf("shift", "z", "x", "c", "v", "b", "n", "m", "Back")
+        
+        val row2 = when (activeLang) {
+            "fr" -> if (isShifted) listOf("A", "Z", "E", "R", "T", "Y", "U", "I", "O", "P")
+                    else listOf("a", "z", "e", "r", "t", "y", "u", "i", "o", "p")
+            else -> if (isShifted) listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
+                    else listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+        }
+
+        val row3 = when (activeLang) {
+            "fr" -> if (isShifted) listOf("spacer_half", "Q", "S", "D", "F", "G", "H", "J", "K", "L", "M", "spacer_half")
+                    else listOf("spacer_half", "q", "s", "d", "f", "g", "h", "j", "k", "l", "m", "spacer_half")
+            "es" -> if (isShifted) listOf("spacer_half", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Ñ", "spacer_half")
+                    else listOf("spacer_half", "a", "s", "d", "f", "g", "h", "j", "k", "l", "ñ", "spacer_half")
+            else -> if (isShifted) listOf("spacer_half", "A", "S", "D", "F", "G", "H", "J", "K", "L", "spacer_half")
+                    else listOf("spacer_half", "a", "s", "d", "f", "g", "h", "j", "k", "l", "spacer_half")
+        }
+
+        val row4 = when (activeLang) {
+            "fr" -> if (isShifted) listOf("Shift", "W", "X", "C", "V", "B", "N", "Back")
+                    else listOf("shift", "w", "x", "c", "v", "b", "n", "Back")
+            else -> if (isShifted) listOf("Shift", "Z", "X", "C", "V", "B", "N", "M", "Back")
+                    else listOf("shift", "z", "x", "c", "v", "b", "n", "m", "Back")
+        }
+
         val row5 = listOf("?123", ",", "Spacebar", ".", "Enter")
 
         if (numberRowEnabled) {
@@ -1417,12 +1576,19 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     weight
                 ).apply {
-                    setMargins(dpToPx(3), dpToPx(6), dpToPx(3), dpToPx(6))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(6), dpToPx(keySpacingDp), dpToPx(6))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
+                    val isActiveShift = isShifted || isCapsLock
                     val isSpecial = listOf("shift", "back", "enter", "?123", "abc", "📋", "☺", "⚙").contains(key.lowercase())
-                    val bgColor = if (isSpecial) Color.parseColor(themeSpecialKeyBg) else Color.parseColor(themeRegularKeyBg)
+                    val bgColor = if (key.lowercase() == "shift" && isActiveShift) {
+                        Color.parseColor(themeAccentColor)
+                    } else if (isSpecial) {
+                        Color.parseColor(themeSpecialKeyBg)
+                    } else {
+                        Color.parseColor(themeRegularKeyBg)
+                    }
                     background = createKeyDrawable(bgColor, dpToPx(6))
                     isClickable = true
                     isFocusable = true
@@ -1449,7 +1615,15 @@ class GlideTypeKeyboardService : InputMethodService() {
                             setImageResource(iconRes)
                             setColorFilter(Color.WHITE)
                         }
-                        val iconSize = if (isLandscape) 24 else 22
+                        val iconSize = if (key.lowercase() == "shift") {
+                            if (isShifted || isCapsLock) {
+                                if (isLandscape) 28 else 26
+                            } else {
+                                if (isLandscape) 20 else 18
+                            }
+                        } else {
+                            if (isLandscape) 24 else 22
+                        }
                         layoutParams = RelativeLayout.LayoutParams(
                             dpToPx(iconSize),
                             dpToPx(iconSize)
@@ -1599,15 +1773,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                                     swipeDetected = true
                                     handler.removeCallbacks(spaceLongPressRunnableLocal)
                                     vibrateClick()
-                                    if (currentViewMode == ViewMode.QWERTY) {
-                                        currentViewMode = ViewMode.HINDI
-                                        isHindiPage2 = false
-                                        Toast.makeText(this@GlideTypeKeyboardService, "Hindi Keyboard", Toast.LENGTH_SHORT).show()
-                                    } else if (currentViewMode == ViewMode.HINDI) {
-                                        currentViewMode = ViewMode.QWERTY
-                                        Toast.makeText(this@GlideTypeKeyboardService, "English Keyboard", Toast.LENGTH_SHORT).show()
-                                    }
-                                    updateKeyboardLayout()
+                                    switchToNextLanguage()
                                 }
                             }
                             MotionEvent.ACTION_UP -> {
@@ -1626,8 +1792,6 @@ class GlideTypeKeyboardService : InputMethodService() {
                         }
                         true
                     }
-                } else if (currentViewMode == ViewMode.QWERTY && gestureEnabled) {
-                    // Handled by keyboardArea gesture touch listener
                 } else {
                     var startKeyTime = 0L
                     var keyLongPressed = false
@@ -1688,46 +1852,97 @@ class GlideTypeKeyboardService : InputMethodService() {
         return row
     }
 
+    private fun getKeyCodeForChar(c: Char): Int {
+        val lower = c.lowercaseChar()
+        if (lower in 'a'..'z') {
+            return android.view.KeyEvent.KEYCODE_A + (lower - 'a')
+        }
+        if (lower in '0'..'9') {
+            return android.view.KeyEvent.KEYCODE_0 + (lower - '0')
+        }
+        return when (lower) {
+            '\n' -> android.view.KeyEvent.KEYCODE_ENTER
+            ' ' -> android.view.KeyEvent.KEYCODE_SPACE
+            else -> -1
+        }
+    }
+
+    private fun updateShiftStateBasedOnContext() {
+        if (!autoCapEnabled) return
+        val ic = currentInputConnection ?: return
+        val textBefore = ic.getTextBeforeCursor(2, 0)
+        if (textBefore == null || textBefore.isEmpty()) {
+            isShifted = true
+            updateKeyboardLayout()
+        } else {
+            val str = textBefore.toString()
+            if (str.endsWith(". ") || str.endsWith("? ") || str.endsWith("! ") || str.endsWith("\n")) {
+                isShifted = true
+                updateKeyboardLayout()
+            }
+        }
+    }
+
     private fun handleKeyPress(key: String) {
+        if (isCtrlActive || isAltActive) {
+            val ic = currentInputConnection
+            if (ic != null && key.length == 1) {
+                val c = key.first()
+                val keyCode = getKeyCodeForChar(c)
+                if (keyCode != -1) {
+                    var metaState = 0
+                    if (isCtrlActive) metaState = metaState or android.view.KeyEvent.META_CTRL_ON or android.view.KeyEvent.META_CTRL_MASK
+                    if (isAltActive) metaState = metaState or android.view.KeyEvent.META_ALT_ON or android.view.KeyEvent.META_ALT_MASK
+                    val time = android.os.SystemClock.uptimeMillis()
+                    ic.sendKeyEvent(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_DOWN, keyCode, 0, metaState))
+                    ic.sendKeyEvent(android.view.KeyEvent(time, time, android.view.KeyEvent.ACTION_UP, keyCode, 0, metaState))
+                }
+            }
+            isCtrlActive = false
+            isAltActive = false
+            updateKeyboardLayout()
+            return
+        }
+
         if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
             val et = translationInputField!!
             val start = et.selectionStart
             val end = et.selectionEnd
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                    if (start > 0 || end > 0) {
+                        if (start != end) {
+                            et.text.delete(Math.min(start, end), Math.max(start, end))
+                        } else {
+                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                        }
+                    }
                 }
                 "enter", "↵" -> {
-                    currentInputConnection?.finishComposingText()
-                    isTranslationActive = false
-                    updateKeyboardLayout()
+                    val text = et.text.toString()
+                    if (text.isNotEmpty()) {
+                        translateText(text, translationSourceLang, translationTargetLang) { result ->
+                            if (result != null) {
+                                currentInputConnection?.commitText(result, 1)
+                                et.text.clear()
+                            }
+                        }
+                    }
                 }
                 "spacebar", " ", "␣" -> {
                     et.text.replace(Math.min(start, end), Math.max(start, end), " ")
                 }
                 "shift", "⇧", "⇪" -> {
-                    val now = System.currentTimeMillis()
-                    if (now - lastShiftPressTime < 300) {
-                        isCapsLock = !isCapsLock
-                        isShifted = isCapsLock
-                    } else {
-                        isCapsLock = false
-                        isShifted = !isShifted
-                    }
-                    lastShiftPressTime = now
-                    updateKeyboardLayout()
+                    // Ignored in translation field
                 }
                 "?123" -> {
                     currentViewMode = ViewMode.SYMBOLS
+                    isSymbolsPage2 = false
                     updateKeyboardLayout()
                 }
                 "1/2", "2/2" -> {
-                    if (currentViewMode == ViewMode.HINDI) {
-                        isHindiPage2 = !isHindiPage2
-                    } else {
-                        isSymbolsPage2 = !isSymbolsPage2
-                    }
+                    isHindiPage2 = !isHindiPage2
                     updateKeyboardLayout()
                 }
                 "abc" -> {
@@ -1757,8 +1972,12 @@ class GlideTypeKeyboardService : InputMethodService() {
                     isCapsLock = !isCapsLock
                     isShifted = isCapsLock
                 } else {
-                    isCapsLock = false
-                    isShifted = !isShifted
+                    if (isCapsLock) {
+                        isCapsLock = false
+                        isShifted = false
+                    } else {
+                        isShifted = !isShifted
+                    }
                 }
                 lastShiftPressTime = now
                 updateKeyboardLayout()
@@ -1766,21 +1985,36 @@ class GlideTypeKeyboardService : InputMethodService() {
             "back", "⌫" -> {
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                updateShiftStateBasedOnContext()
             }
             "enter", "↵" -> {
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                updateShiftStateBasedOnContext()
+            }
+            "spacebar", " ", "␣" -> {
+                val now = System.currentTimeMillis()
+                if (doubleSpacePeriodEnabled && now - lastSpacePressTime < 300) {
+                    val textBefore = ic.getTextBeforeCursor(1, 0)
+                    if (textBefore != null && textBefore.toString() == " ") {
+                        ic.deleteSurroundingText(1, 0)
+                        ic.commitText(". ", 1)
+                    } else {
+                        ic.commitText(" ", 1)
+                    }
+                } else {
+                    ic.commitText(" ", 1)
+                }
+                lastSpacePressTime = now
+                updateShiftStateBasedOnContext()
             }
             "?123" -> {
                 currentViewMode = ViewMode.SYMBOLS
+                isSymbolsPage2 = false
                 updateKeyboardLayout()
             }
             "1/2", "2/2" -> {
-                if (currentViewMode == ViewMode.HINDI) {
-                    isHindiPage2 = !isHindiPage2
-                } else {
-                    isSymbolsPage2 = !isSymbolsPage2
-                }
+                isHindiPage2 = !isHindiPage2
                 updateKeyboardLayout()
             }
             "abc" -> {
@@ -1791,15 +2025,13 @@ class GlideTypeKeyboardService : InputMethodService() {
                 currentViewMode = ViewMode.EMOJIS
                 updateKeyboardLayout()
             }
-            "spacebar", " ", "␣" -> {
-                ic.commitText(" ", 1)
-            }
             else -> {
                 ic.commitText(key, 1)
                 if (isShifted && !isCapsLock) {
                     isShifted = false
-                    updateKeyboardLayout()
                 }
+                updateShiftStateBasedOnContext()
+                updateKeyboardLayout()
             }
         }
     }
@@ -1939,7 +2171,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     MotionEvent.ACTION_DOWN -> {
                         vibrateClick()
                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                        if (isTranslationActive && translationInputField != null) {
+                        if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
                             val et = translationInputField!!
                             val start = et.selectionStart
                             val end = et.selectionEnd
@@ -1947,11 +2179,15 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 if (start != end) {
                                     et.text.delete(Math.min(start, end), Math.max(start, end))
                                 } else {
-                                    et.text.delete(start - 1, start)
+                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                 }
                             }
                         } else {
-                            currentInputConnection?.deleteSurroundingText(1, 0)
+                            currentInputConnection?.let { ic ->
+                                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                            }
                         }
                         
                         backspaceRunnable = object : Runnable {
@@ -1970,7 +2206,10 @@ class GlideTypeKeyboardService : InputMethodService() {
                                         }
                                     }
                                 } else {
-                                    currentInputConnection?.deleteSurroundingText(1, 0)
+                                    currentInputConnection?.let { ic ->
+                                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                            }
                                 }
                                 handler.postDelayed(this, 55)
                             }
@@ -2234,12 +2473,9 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                 }
 
-                val clipTextView = TextView(this).apply {
-                    text = item.text
-                    setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
+                val isImage = item.imageUri != null
+                val contentLayout = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
                     layoutParams = LinearLayout.LayoutParams(
                         0,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2247,12 +2483,89 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ).apply {
                         setMargins(0, 0, dpToPx(12), 0)
                     }
+                }
+
+                if (isImage) {
+                    val imageView = ImageView(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(60), dpToPx(40)).apply {
+                            setMargins(0, 0, dpToPx(8), 0)
+                        }
+                        scaleType = ImageView.ScaleType.CENTER_CROP
+                        try {
+                            setImageURI(android.net.Uri.parse(item.imageUri))
+                        } catch (e: Exception) {
+                            setImageResource(R.drawable.ic_clipboard)
+                        }
+                        setOnClickListener {
+                            vibrateClick()
+                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newUri(contentResolver, "Image", android.net.Uri.parse(item.imageUri))
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(this@GlideTypeKeyboardService, "Image copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    contentLayout.addView(imageView)
+                }
+
+                val textToCheck = item.text
+                val isUrl = textToCheck.startsWith("http://") || textToCheck.startsWith("https://") || android.util.Patterns.WEB_URL.matcher(textToCheck).matches()
+
+                val clipTextView = TextView(this).apply {
+                    text = if (isImage) "Copied Image" else item.text
+                    setTextColor(if (isUrl) Color.parseColor("#3498db") else Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        1.0f
+                    )
                     setOnClickListener {
                         vibrateClick()
-                        currentInputConnection?.commitText(item.text, 1)
+                        if (isImage) {
+                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newUri(contentResolver, "Image", android.net.Uri.parse(item.imageUri))
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(this@GlideTypeKeyboardService, "Image copied to clipboard", Toast.LENGTH_SHORT).show()
+                        } else {
+                            currentInputConnection?.commitText(item.text, 1)
+                        }
                     }
                 }
-                itemRow.addView(clipTextView)
+                contentLayout.addView(clipTextView)
+
+                if (isUrl) {
+                    val browserIcon = ImageView(this).apply {
+                        setImageResource(R.drawable.ic_browser)
+                        setColorFilter(Color.parseColor("#3498db"))
+                        background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                        isClickable = true
+                        isFocusable = true
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
+                            setMargins(0, 0, dpToPx(6), 0)
+                        }
+                        setOnClickListener {
+                            vibrateClick()
+                            try {
+                                val urlStr = if (!textToCheck.startsWith("http://") && !textToCheck.startsWith("https://")) {
+                                    "https://" + textToCheck
+                                } else {
+                                    textToCheck
+                                }
+                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(urlStr)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(this@GlideTypeKeyboardService, "Unable to open link", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    contentLayout.addView(browserIcon)
+                }
+
+                itemRow.addView(contentLayout)
 
                 val pinBtn = ImageView(this).apply {
                     setImageResource(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin)
@@ -2294,13 +2607,14 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     private fun playClick(keyCode: Int) {
         if (!soundEnabled) return
-        val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-        val volume = 0.5f
-        when (keyCode) {
-            android.view.KeyEvent.KEYCODE_ENTER -> am.playSoundEffect(AudioManager.FX_KEYPRESS_RETURN, volume)
-            android.view.KeyEvent.KEYCODE_DEL -> am.playSoundEffect(AudioManager.FX_KEYPRESS_DELETE, volume)
-            android.view.KeyEvent.KEYCODE_SPACE -> am.playSoundEffect(AudioManager.FX_KEYPRESS_SPACEBAR, volume)
-            else -> am.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, volume)
+        val soundConstant = when (keyCode) {
+            android.view.KeyEvent.KEYCODE_ENTER -> android.view.SoundEffectConstants.NAVIGATION_DOWN
+            android.view.KeyEvent.KEYCODE_DEL -> android.view.SoundEffectConstants.CLICK
+            android.view.KeyEvent.KEYCODE_SPACE -> android.view.SoundEffectConstants.CLICK
+            else -> android.view.SoundEffectConstants.CLICK
+        }
+        if (::keyboardContainer.isInitialized) {
+            keyboardContainer.playSoundEffect(soundConstant)
         }
     }
 
@@ -2435,6 +2749,13 @@ class GlideTypeKeyboardService : InputMethodService() {
                     1.0f
                 ).apply {
                     setMargins(dpToPx(8), 0, dpToPx(8), 0)
+                }
+                post {
+                    requestFocus()
+                }
+                setOnTouchListener { v, event ->
+                    v.requestFocus()
+                    false
                 }
 
                 addTextChangedListener(object : android.text.TextWatcher {
@@ -2819,7 +3140,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         val row1 = listOf("Esc", "Tab", "Undo", "Redo", "Select All")
-        val row2 = listOf("Cut", "Copy", "Paste", "Ctrl+Alt+V", "Find", "Home")
+        val row2 = listOf("Ctrl", "Alt", "Cut", "Copy", "Paste", "Find", "Home")
         val row3 = listOf("PgUp", "Up", "PgDn", "End", "Del")
         val row4 = listOf("Left", "Down", "Right", "Enter", "ABC")
 
@@ -2858,11 +3179,13 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     1.0f
                 ).apply {
-                    setMargins(dpToPx(3), dpToPx(6), dpToPx(3), dpToPx(6))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(6), dpToPx(keySpacingDp), dpToPx(6))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
-                    background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(6))
+                    val isActiveModifier = (key == "Ctrl" && isCtrlActive) || (key == "Alt" && isAltActive)
+                    val bgColor = if (isActiveModifier) Color.parseColor(themeAccentColor) else Color.parseColor(themeSpecialKeyBg)
+                    background = createKeyDrawable(bgColor, dpToPx(6))
                     isClickable = workable
                     isFocusable = workable
                     alpha = if (workable) 1.0f else 0.4f
@@ -2902,6 +3225,16 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun handlePcShortcutPress(key: String) {
+        if (key == "Ctrl") {
+            isCtrlActive = !isCtrlActive
+            updateKeyboardLayout()
+            return
+        }
+        if (key == "Alt") {
+            isAltActive = !isAltActive
+            updateKeyboardLayout()
+            return
+        }
         if (!isPcKeyWorkable(key)) return
         if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
             val et = translationInputField!!
