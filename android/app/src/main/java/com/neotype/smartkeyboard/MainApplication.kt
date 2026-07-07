@@ -1,4 +1,4 @@
-package com.translator.overlaykeyboard
+package com.neotype.smartkeyboard
 
 import android.app.Application
 import android.content.res.Configuration

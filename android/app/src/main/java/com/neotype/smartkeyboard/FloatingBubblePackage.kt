@@ -1,4 +1,4 @@
-package com.translator.overlaykeyboard
+package com.neotype.smartkeyboard
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

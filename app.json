@@ -1,12 +1,18 @@
 {
   "expo": {
-    "name": "Voice Translator Overlay",
-    "slug": "voice-translator-overlay",
+    "name": "NeoType Keyboard",
+    "slug": "neotype-keyboard",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#121212"
+    },
     "android": {
-      "package": "com.translator.overlaykeyboard",
+      "package": "com.neotype.smartkeyboard",
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.RECORD_AUDIO",
@@ -15,7 +21,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "bc15dd27-e6d1-4ee4-a113-c5755123a0e7"
+        "projectId": "5c7d4653-a6bd-49aa-b8b4-7bbaf8c5c576"
       }
     }
   }

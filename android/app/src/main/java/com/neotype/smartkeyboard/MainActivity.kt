@@ -1,4 +1,4 @@
-package com.translator.overlaykeyboard
+package com.neotype.smartkeyboard
 
 import android.os.Build
 import android.os.Bundle
@@ -17,6 +17,29 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+    checkAndRequestPermissions()
+  }
+
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    checkAndRequestPermissions()
+  }
+
+  override fun onResume() {
+    super.onResume()
+    checkAndRequestPermissions()
+  }
+
+  private fun checkAndRequestPermissions() {
+    val intent = intent
+    if (intent != null && intent.getBooleanExtra("request_mic", false)) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+          requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+        }
+      }
+    }
   }
 
   /**
