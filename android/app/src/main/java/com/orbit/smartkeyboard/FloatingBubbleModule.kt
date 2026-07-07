@@ -1,4 +1,4 @@
-package com.neotype.smartkeyboard
+package com.orbit.smartkeyboard
 
 import android.content.Context
 import android.content.Intent

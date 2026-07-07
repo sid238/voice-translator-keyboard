@@ -30,7 +30,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState(null);
 
   // Preference fields synced with native keyboard SharedPreferences
-  const [theme, setTheme] = useState('dark'); // Pure Black Default!
+  const [theme, setTheme] = useState('red'); // Cyberpunk Red Default!
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [vibeEnabled, setVibeEnabled] = useState(true);
   const [numberRowEnabled, setNumberRowEnabled] = useState(true);
@@ -105,7 +105,7 @@ export default function App() {
     try {
       if (FloatingBubble) {
         if (FloatingBubble.getStringSetting) {
-          const t = await FloatingBubble.getStringSetting('theme', 'dark'); // Default theme dark
+          const t = await FloatingBubble.getStringSetting('theme', 'red'); // Default theme red
           setTheme(t);
           const lang = await FloatingBubble.getStringSetting('selected_language', 'en');
           setSelectedLanguage(lang);
@@ -226,14 +226,14 @@ export default function App() {
       accent: '#93C5FD',
     },
     red: {
-      primary: '#EF4444',
-      primaryDark: '#B91C1C',
-      background: '#140505',
-      card: '#240C0C',
-      text: '#FEF2F2',
-      subtext: '#F87171',
-      border: '#450A0A',
-      accent: '#FCA5A5',
+      primary: '#FF0055',      // Cyberpunk Red
+      primaryDark: '#B9003B',
+      background: '#0B0B0F',   // Midnight Grey
+      card: '#12131C',         // Midnight Slate Card
+      text: '#F8FAFC',
+      subtext: '#A1A1AA',
+      border: '#2A101C',       // Subtle neon outline
+      accent: '#FF3377',
     },
     green: {
       primary: '#10B981',
@@ -951,7 +951,7 @@ export default function App() {
             style={[localStyles.button, { backgroundColor: '#F59E0B' }]}
             onPress={openKeyboardSettings}
           >
-            <Text style={localStyles.buttonText}>1. Enable NeoType Keyboard</Text>
+            <Text style={localStyles.buttonText}>1. Enable Orbit Keyboard</Text>
           </TouchableOpacity>
         )}
 
@@ -960,7 +960,7 @@ export default function App() {
             style={[localStyles.button, { backgroundColor: colors.primary }]}
             onPress={selectKeyboard}
           >
-            <Text style={localStyles.buttonText}>2. Select NeoType Keyboard</Text>
+            <Text style={localStyles.buttonText}>2. Select Orbit Keyboard</Text>
           </TouchableOpacity>
         )}
 
@@ -1049,7 +1049,7 @@ export default function App() {
     return (
       <ScrollView style={localStyles.scrollContent}>
         <View style={localStyles.card}>
-          <Text style={[localStyles.cardTitle, { color: colors.primary, fontSize: 18 }]}>NeoType Keyboard</Text>
+          <Text style={[localStyles.cardTitle, { color: colors.primary, fontSize: 18 }]}>Orbit Keyboard</Text>
           <Text style={{ color: colors.subtext, fontSize: 13, marginBottom: 12 }}>
             Premium Android keyboard service configured with custom React Native settings.
           </Text>
@@ -1092,7 +1092,7 @@ export default function App() {
 
       {/* Header */}
       <View style={localStyles.header}>
-        <Text style={localStyles.headerTitle}>NeoType</Text>
+        <Text style={localStyles.headerTitle}>Orbit</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={{ color: colors.subtext, fontSize: 12, marginRight: 8 }}>
             {isKeyboardDefault ? 'Active Default' : 'Setup Required'}

@@ -1,4 +1,4 @@
-package com.neotype.smartkeyboard
+package com.orbit.smartkeyboard
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -266,7 +266,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         soundEnabled = prefs.getBoolean("sound_enabled", false)
         numberRowEnabled = prefs.getBoolean("number_row_enabled", true)
         gestureEnabled = prefs.getBoolean("gesture_enabled", true)
-        themeName = prefs.getString("theme", "purple") ?: "purple"
+        themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
 
@@ -294,11 +294,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                 themeToolbarBg = "#0F172A"
             }
             "red" -> {
-                themeBgColor = "#1B0B0B"
-                themeAccentColor = "#E53E3E"
-                themeSpecialKeyBg = "#2D1A1A"
-                themeRegularKeyBg = "#231212"
-                themeToolbarBg = "#200D0D"
+                themeBgColor = "#0B0B0F"
+                themeAccentColor = "#FF0055"
+                themeSpecialKeyBg = "#1E1F29"
+                themeRegularKeyBg = "#12131C"
+                themeToolbarBg = "#0F1016"
             }
             "green" -> {
                 themeBgColor = "#081C15"

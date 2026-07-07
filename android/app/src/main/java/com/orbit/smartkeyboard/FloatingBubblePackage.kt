@@ -1,4 +1,4 @@
-package com.neotype.smartkeyboard
+package com.orbit.smartkeyboard
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "NeoType Keyboard",
+    "name": "Orbit Keyboard",
     "slug": "neotype-keyboard",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
       "backgroundColor": "#121212"
     },
     "android": {
-      "package": "com.neotype.smartkeyboard",
+      "package": "com.orbit.smartkeyboard",
       "permissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.RECORD_AUDIO",
