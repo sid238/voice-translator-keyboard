@@ -2565,7 +2565,7 @@ class GlideTypeKeyboardService : InputMethodService() {
         return root
     }
 
-    private fun getHintForKey(key: String): String? {    private fun getHintForKey(key: String): String? {
+    private fun getHintForKey(key: String): String? {
         if (key.length != 1) return null
         val c = key.first().lowercaseChar()
         return when (c) {

@@ -14,6 +14,7 @@ import {
   Keyboard,
   Dimensions,
   Alert,
+  Linking,
 } from 'react-native';
 
 const { FloatingBubble } = NativeModules;
@@ -31,7 +32,7 @@ export default function App() {
   const [activeSection, setActiveSection] = useState(null);
 
   // Preference fields synced with native keyboard SharedPreferences
-  const [theme, setTheme] = useState('red'); // Cyberpunk Red Default!
+  const [theme, setTheme] = useState('green'); // Emerald (#00D68F) Default!
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [vibeEnabled, setVibeEnabled] = useState(true);
   const [numberRowEnabled, setNumberRowEnabled] = useState(true);
@@ -59,7 +60,6 @@ export default function App() {
     checkKeyboardStatus();
     loadAllPrefs();
 
-    // Listen to soft keyboard show/hide events to hide bottom navigation and avoid overlaps
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', () => {
       setIsKeyboardVisible(true);
     });
@@ -107,7 +107,7 @@ export default function App() {
     try {
       if (FloatingBubble) {
         if (FloatingBubble.getStringSetting) {
-          const t = await FloatingBubble.getStringSetting('theme', 'red'); // Default theme red
+          const t = await FloatingBubble.getStringSetting('theme', 'green'); // Default theme emerald
           setTheme(t);
           const lang = await FloatingBubble.getStringSetting('selected_language', 'en');
           setSelectedLanguage(lang);
@@ -198,270 +198,19 @@ export default function App() {
     }
   };
 
-  // Dynamic Theme Colors
-  const colors = {
-    purple: {
-      primary: '#A855F7',
-      primaryDark: '#7C3AED',
-      background: '#090514',
-      card: '#130C24',
-      text: '#F3E8FF',
-      subtext: '#9887B0',
-      border: '#281745',
-      accent: '#D8B4FE',
-    },
-    dark: { // Default Pitch Black layout theme
-      primary: '#FFFFFF',
-      primaryDark: '#94A3B8',
-      background: '#000000',
-      card: '#0A0A0A',
-      text: '#F8FAFC',
-      subtext: '#888888',
-      border: '#141414',
-      accent: '#CBD5E1',
-    },
-    blue: {
-      primary: '#3B82F6',
-      primaryDark: '#1D4ED8',
-      background: '#050B14',
-      card: '#0C1524',
-      text: '#EFF6FF',
-      subtext: '#60A5FA',
-      border: '#172554',
-      accent: '#93C5FD',
-    },
-    red: {
-      primary: '#FF0055',      // Cyberpunk Red
-      primaryDark: '#B9003B',
-      background: '#0B0B0F',   // Midnight Grey
-      card: '#12131C',         // Midnight Slate Card
-      text: '#F8FAFC',
-      subtext: '#A1A1AA',
-      border: '#2A101C',       // Subtle neon outline
-      accent: '#FF3377',
-    },
-    green: {
-      primary: '#10B981',
-      primaryDark: '#047857',
-      background: '#03120E',
-      card: '#06261E',
-      text: '#ECFDF5',
-      subtext: '#34D399',
-      border: '#064E3B',
-      accent: '#A7F3D0',
-    },
-  }[theme] || {
-    primary: '#FFFFFF',
-    primaryDark: '#94A3B8',
+  // Color Palette Definitions
+  const palette = {
     background: '#000000',
-    card: '#0A0A0A',
-    text: '#F8FAFC',
-    subtext: '#888888',
-    border: '#141414',
-    accent: '#CBD5E1',
+    surface: '#121212',
+    surfaceSecondary: '#1A1A1A',
+    emerald: '#00D68F',
+    blue: '#4F8CFF',
+    orange: '#FFB020',
+    red: '#FF5C5C',
+    text: '#FFFFFF',
+    subtext: '#A0A0A0',
+    border: '#1F1F1F',
   };
-
-  const localStyles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-      paddingTop: StatusBar.currentHeight || 0,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.card,
-    },
-    headerTitle: {
-      fontSize: 22,
-      fontWeight: '900',
-      color: colors.primary,
-      letterSpacing: 1.2,
-    },
-    headerStatusDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-    },
-    scrollContent: {
-      flex: 1,
-      paddingHorizontal: 20,
-      paddingTop: 16,
-      paddingBottom: 40,
-    },
-    navBar: {
-      flexDirection: 'row',
-      height: 64,
-      backgroundColor: colors.card,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      justifyContent: 'space-around',
-      alignItems: 'center',
-    },
-    navItem: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 1,
-      height: '100%',
-    },
-    navText: {
-      fontSize: 12,
-      fontWeight: '600',
-      marginTop: 4,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 16,
-      padding: 18,
-      marginBottom: 20,
-    },
-    cardTitle: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      color: colors.text,
-      marginBottom: 12,
-    },
-    statusRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginVertical: 6,
-    },
-    statusLabel: {
-      color: colors.subtext,
-      fontSize: 14,
-    },
-    statusValue: {
-      fontWeight: 'bold',
-      fontSize: 14,
-    },
-    button: {
-      borderRadius: 12,
-      paddingVertical: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginVertical: 8,
-    },
-    buttonText: {
-      color: colors.background === '#000000' ? '#FFFFFF' : '#FFFFFF',
-      fontWeight: 'bold',
-      fontSize: 15,
-    },
-    testCard: {
-      backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: 16,
-      padding: 16,
-      marginBottom: 20,
-    },
-    textInput: {
-      backgroundColor: colors.background,
-      color: colors.text,
-      borderRadius: 10,
-      borderColor: colors.border,
-      borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      fontSize: 14,
-      height: 70,
-      textAlignVertical: 'top',
-      marginTop: 10,
-    },
-    settingItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 15,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    settingItemTitle: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.text,
-    },
-    settingItemSubtitle: {
-      fontSize: 12,
-      color: colors.subtext,
-      marginTop: 2,
-    },
-    backHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    backHeaderText: {
-      color: colors.primary,
-      fontSize: 16,
-      fontWeight: 'bold',
-      marginLeft: 10,
-    },
-    sectionContent: {
-      paddingHorizontal: 20,
-      paddingTop: 16,
-    },
-    sectionTitle: {
-      fontSize: 20,
-      fontWeight: '800',
-      color: colors.text,
-      marginBottom: 10,
-    },
-    sectionDesc: {
-      fontSize: 13,
-      color: colors.subtext,
-      lineHeight: 18,
-      marginBottom: 24,
-    },
-    switchRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    switchLabel: {
-      fontSize: 15,
-      color: colors.text,
-      fontWeight: '500',
-    },
-    themeGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'space-between',
-    },
-    themeCard: {
-      width: '48%',
-      height: 90,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 16,
-      borderWidth: 2,
-      justifyContent: 'space-between',
-    },
-    themeCardName: {
-      color: '#FFFFFF',
-      fontWeight: 'bold',
-      fontSize: 14,
-    },
-    themeColorPill: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: '#FFFFFF',
-    },
-  });
 
   const renderSectionDetails = () => {
     let title = '';
@@ -470,7 +219,7 @@ export default function App() {
 
     switch (activeSection) {
       case 'language':
-        title = 'Language & Layout';
+        title = 'Language';
         desc = 'Select multiple input languages and custom keyboard layouts to switch between.';
         content = (
           <View>
@@ -485,8 +234,8 @@ export default function App() {
                 <TouchableOpacity
                   key={lang.id}
                   style={[
-                    localStyles.settingItem,
-                    { borderBottomColor: isSelected ? colors.primary : colors.border }
+                    styles.settingItemRow,
+                    isSelected && { borderColor: palette.emerald }
                   ]}
                   onPress={() => {
                     let newLangs = [...selectedLanguages];
@@ -502,14 +251,14 @@ export default function App() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 20, marginRight: 12 }}>{lang.flag}</Text>
-                    <Text style={[localStyles.settingItemTitle, { color: isSelected ? colors.primary : colors.text }]}>
+                    <Text style={{ fontSize: 22, marginRight: 14 }}>{lang.flag}</Text>
+                    <Text style={[styles.settingItemTitle, isSelected && { color: palette.emerald }]}>
                       {lang.name}
                     </Text>
                   </View>
-                  {isSelected && (
-                    <Text style={{ color: colors.primary, fontWeight: 'bold' }}>✓</Text>
-                  )}
+                  <View style={[styles.customRadio, isSelected && styles.customRadioActive]}>
+                    {isSelected && <View style={styles.customRadioInner} />}
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -519,43 +268,44 @@ export default function App() {
 
       case 'theme':
         title = 'Theme Store';
-        desc = 'Instantly apply premium color ways and glow profiles to match your mood.';
+        desc = 'Instantly apply premium colorways and glow profiles to match your mood.';
         content = (
-          <View style={localStyles.themeGrid}>
-            {[
-              { id: 'dark', name: 'Pure Black', color: '#FFFFFF', bg: '#000000' },
-              { id: 'purple', name: 'Neon Purple', color: '#A855F7', bg: '#090514' },
-              { id: 'blue', name: 'Ocean Blue', color: '#3B82F6', bg: '#050B14' },
-              { id: 'red', name: 'Sunset Red', color: '#EF4444', bg: '#140505' },
-              { id: 'green', name: 'Emerald', color: '#10B981', bg: '#03120E' },
-            ].map((t) => (
-              <TouchableOpacity
-                key={t.id}
-                style={[
-                  localStyles.themeCard,
-                  {
-                    backgroundColor: t.bg,
-                    borderColor: theme === t.id ? colors.primary : colors.border,
-                  }
-                ]}
-                onPress={() => {
-                  setTheme(t.id);
-                  saveStringPref('theme', t.id);
-                }}
-              >
-                <Text style={localStyles.themeCardName}>{t.name}</Text>
-              </TouchableOpacity>
-            ))}
-            <View style={{ width: '100%', marginTop: 24, padding: 16, backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-              <Text style={{ color: '#FFF', fontSize: 16, fontWeight: 'bold', marginBottom: 4 }}>Custom Wallpaper background</Text>
-              <Text style={{ color: colors.subtext, fontSize: 12, marginBottom: 16 }}>Set your own background image/photo for the keyboard keys overlay.</Text>
+          <View>
+            <View style={styles.themeGrid}>
+              {[
+                { id: 'green', name: 'Emerald Glow', color: palette.emerald, bg: '#03120E' },
+                { id: 'blue', name: 'Oceanic Blue', color: palette.blue, bg: '#050B14' },
+                { id: 'purple', name: 'Neon Purple', color: '#A855F7', bg: '#090514' },
+                { id: 'red', name: 'Sunset Crimson', color: palette.red, bg: '#140505' },
+                { id: 'dark', name: 'Pitch Dark', color: '#FFFFFF', bg: '#121212' },
+              ].map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[
+                    styles.themeCard,
+                    { backgroundColor: t.bg, borderColor: theme === t.id ? t.color : palette.border }
+                  ]}
+                  onPress={() => {
+                    setTheme(t.id);
+                    saveStringPref('theme', t.id);
+                  }}
+                >
+                  <Text style={styles.themeCardName}>{t.name}</Text>
+                  <View style={[styles.themePill, { backgroundColor: t.color }]} />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.wallpaperContainer}>
+              <Text style={styles.wallpaperTitle}>Custom Wallpaper background</Text>
+              <Text style={styles.wallpaperSubtitle}>Set your own background image/photo for the keyboard keys overlay.</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <TouchableOpacity
-                  style={{ flex: 1, backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
+                  style={[styles.wallpaperBtn, { backgroundColor: palette.emerald }]}
                   onPress={async () => {
                     try {
                       if (FloatingBubble && FloatingBubble.pickThemeImage) {
-                        const path = await FloatingBubble.pickThemeImage();
+                        await FloatingBubble.pickThemeImage();
                         Alert.alert("Success", "Custom keyboard background image set!");
                       }
                     } catch (e) {
@@ -565,10 +315,10 @@ export default function App() {
                     }
                   }}
                 >
-                  <Text style={{ color: '#FFF', fontWeight: '700' }}>Choose Photo</Text>
+                  <Text style={styles.wallpaperBtnText}>Choose Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={{ flex: 1, backgroundColor: '#EF4444', paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
+                  style={[styles.wallpaperBtn, { backgroundColor: 'rgba(255,92,92,0.1)', borderWidth: 1, borderColor: palette.red }]}
                   onPress={async () => {
                     try {
                       if (FloatingBubble && FloatingBubble.clearThemeImage) {
@@ -580,7 +330,7 @@ export default function App() {
                     }
                   }}
                 >
-                  <Text style={{ color: '#FFF', fontWeight: '700' }}>Remove Photo</Text>
+                  <Text style={[styles.wallpaperBtnText, { color: palette.red }]}>Remove Photo</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -589,131 +339,98 @@ export default function App() {
         break;
 
       case 'keyboard':
-        title = 'Keyboard Options';
+        title = 'Keyboard Settings';
         desc = 'Customize structural heights, vibration strengths, keyspacing, and delays.';
         content = (
           <View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Hinted Number Row</Text>
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Hinted Number Row</Text>
+                <Text style={styles.settingItemSubtitle}>Always display number row above layouts</Text>
+              </View>
               <Switch
                 value={numberRowEnabled}
                 onValueChange={(val) => {
                   setNumberRowEnabled(val);
                   saveBooleanPref('number_row_enabled', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={numberRowEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Keypress Sound Feedback</Text>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Keypress Sound Feedback</Text>
+                <Text style={styles.settingItemSubtitle}>Audio clicks on tapping keys</Text>
+              </View>
               <Switch
                 value={soundEnabled}
                 onValueChange={(val) => {
                   setSoundEnabled(val);
                   saveBooleanPref('sound_enabled', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={soundEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Keypress Haptic Vibration</Text>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Keypress Haptic Vibration</Text>
+                <Text style={styles.settingItemSubtitle}>Tactile feedback response on presses</Text>
+              </View>
               <Switch
                 value={vibeEnabled}
                 onValueChange={(val) => {
                   setVibeEnabled(val);
                   saveBooleanPref('vibration_enabled', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={vibeEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
 
-            {/* Key Spacing option slider */}
-            <View style={{ marginTop: 20 }}>
-              <Text style={localStyles.settingItemTitle}>Key Spacing (dp)</Text>
-              <Text style={localStyles.settingItemSubtitle}>Current: {keySpacing} dp</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
+            <View style={styles.spacingSliderGroup}>
+              <Text style={styles.sliderHeading}>Key Spacing (dp)</Text>
+              <Text style={styles.sliderDesc}>Current spacing: {keySpacing} dp</Text>
+              <View style={styles.tabsSelectorRow}>
                 {[2, 4, 6, 8, 10].map((item) => (
                   <TouchableOpacity
                     key={item}
-                    style={{
-                      paddingVertical: 10,
-                      backgroundColor: keySpacing === item ? colors.primary : colors.card,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      flex: 1,
-                      alignItems: 'center',
-                      marginHorizontal: 3,
-                    }}
+                    style={[styles.tabSelectorCell, keySpacing === item && styles.tabSelectorCellActive]}
                     onPress={() => {
                       setKeySpacing(item);
                       saveIntPref('key_spacing_dp', item);
                     }}
                   >
-                    <Text style={{ color: keySpacing === item ? '#000' : '#FFF', fontWeight: 'bold', fontSize: 13 }}>{item}px</Text>
+                    <Text style={[styles.tabSelectorCellText, keySpacing === item && styles.tabSelectorCellTextActive]}>
+                      {item}dp
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
 
-            {/* Long press delay settings */}
-            <View style={{ marginTop: 20 }}>
-              <Text style={localStyles.settingItemTitle}>Long Press Delay (ms)</Text>
-              <Text style={localStyles.settingItemSubtitle}>Current: {longPressDelay} ms</Text>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 }}>
-                {[100, 200, 300, 400, 500, 600].map((item) => (
+            <View style={[styles.spacingSliderGroup, { marginTop: 12 }]}>
+              <Text style={styles.sliderHeading}>Long Press Delay (ms)</Text>
+              <Text style={styles.sliderDesc}>Current delay: {longPressDelay} ms</Text>
+              <View style={styles.tabsSelectorRow}>
+                {[200, 300, 400, 500, 600].map((item) => (
                   <TouchableOpacity
                     key={item}
-                    style={{
-                      paddingVertical: 10,
-                      backgroundColor: longPressDelay === item ? colors.primary : colors.card,
-                      borderRadius: 8,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      flex: 1,
-                      alignItems: 'center',
-                      marginHorizontal: 2,
-                    }}
+                    style={[styles.tabSelectorCell, longPressDelay === item && styles.tabSelectorCellActive]}
                     onPress={() => {
                       setLongPressDelay(item);
                       saveIntPref('long_press_delay_ms', item);
                     }}
                   >
-                    <Text style={{ color: longPressDelay === item ? '#000' : '#FFF', fontWeight: 'bold', fontSize: 12 }}>{item}ms</Text>
+                    <Text style={[styles.tabSelectorCellText, longPressDelay === item && styles.tabSelectorCellTextActive]}>
+                      {item}ms
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
-          </View>
-        );
-        break;
-
-      case 'smartbar':
-        title = 'Smartbar Toolbar';
-        desc = 'Manage quick shortcut actions present directly above keyboard letter inputs.';
-        content = (
-          <View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Enable Suggestions & Corrections</Text>
-              <Switch
-                value={suggestionsEnabled}
-                onValueChange={(val) => {
-                  setSuggestionsEnabled(val);
-                  saveBooleanPref('suggestions_enabled', val);
-                }}
-                trackColor={{ true: colors.primary }}
-              />
-            </View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Auto Correction (Word replacement)</Text>
-              <Switch
-                value={autoCorrectEnabled}
-                onValueChange={(val) => {
-                  setAutoCorrectEnabled(val);
-                  saveBooleanPref('auto_correct_enabled', val);
-                }}
-                trackColor={{ true: colors.primary }}
-              />
             </View>
           </View>
         );
@@ -724,26 +441,67 @@ export default function App() {
         desc = 'Adjust auto-corrections, spacebar actions, capitalization, and dictionary mappings.';
         content = (
           <View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Auto Capitalization</Text>
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Auto Capitalization</Text>
+                <Text style={styles.settingItemSubtitle}>Capitalize first letter of sentences/words</Text>
+              </View>
               <Switch
                 value={autoCap}
                 onValueChange={(val) => {
                   setAutoCap(val);
                   saveBooleanPref('auto_cap', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={autoCap ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Double-Space Period (".")</Text>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Double-Space Period (".")</Text>
+                <Text style={styles.settingItemSubtitle}>Double tap spacebar to insert period & space</Text>
+              </View>
               <Switch
                 value={doubleSpacePeriod}
                 onValueChange={(val) => {
                   setDoubleSpacePeriod(val);
                   saveBooleanPref('double_space_period', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={doubleSpacePeriod ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
+              />
+            </View>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Smart Bar suggestions</Text>
+                <Text style={styles.settingItemSubtitle}>Show dictionary predictions bar</Text>
+              </View>
+              <Switch
+                value={suggestionsEnabled}
+                onValueChange={(val) => {
+                  setSuggestionsEnabled(val);
+                  saveBooleanPref('suggestions_enabled', val);
+                }}
+                thumbColor={suggestionsEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
+              />
+            </View>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Auto Correction</Text>
+                <Text style={styles.settingItemSubtitle}>Replace mistyped words automatically</Text>
+              </View>
+              <Switch
+                value={autoCorrectEnabled}
+                onValueChange={(val) => {
+                  setAutoCorrectEnabled(val);
+                  saveBooleanPref('auto_correct_enabled', val);
+                }}
+                thumbColor={autoCorrectEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
           </View>
@@ -751,19 +509,23 @@ export default function App() {
         break;
 
       case 'gesture':
-        title = 'Gesture & NeoType';
+        title = 'Gesture & Glide';
         desc = 'Slide your finger over letters to write seamlessly without raising the hand.';
         content = (
           <View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Enable Glide Typing</Text>
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Enable Glide Typing</Text>
+                <Text style={styles.settingItemSubtitle}>Type by sliding over letter paths</Text>
+              </View>
               <Switch
                 value={gestureEnabled}
                 onValueChange={(val) => {
                   setGestureEnabled(val);
                   saveBooleanPref('gesture_enabled', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={gestureEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
           </View>
@@ -772,74 +534,53 @@ export default function App() {
 
       case 'clipboard':
         title = 'Clipboard Manager';
-        desc = 'Configure copied item retention limits and prevent deletions.';
+        desc = 'Configure copied item retention limits and prevent history loss.';
         content = (
           <View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Copied History Limit</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Copied History Limit</Text>
+                <Text style={styles.settingItemSubtitle}>Wipe older items when limit is exceeded</Text>
+              </View>
+              <View style={styles.quantityWidget}>
                 <TouchableOpacity onPress={() => {
                   const n = Math.max(50, clipboardLimit - 50);
                   setClipboardLimit(n);
                   saveIntPref('clipboard_limit', n);
-                }} style={{ padding: 8, backgroundColor: colors.border, borderRadius: 6 }}>
-                  <Text style={{ color: '#FFF', fontWeight: 'bold' }}>-</Text>
+                }} style={styles.quantityBtn}>
+                  <Text style={styles.quantityBtnText}>-</Text>
                 </TouchableOpacity>
-                <Text style={{ color: colors.text, marginHorizontal: 12, fontWeight: 'bold' }}>{clipboardLimit}</Text>
+                <Text style={styles.quantityValue}>{clipboardLimit}</Text>
                 <TouchableOpacity onPress={() => {
                   const n = Math.min(250, clipboardLimit + 50);
                   setClipboardLimit(n);
                   saveIntPref('clipboard_limit', n);
-                }} style={{ padding: 8, backgroundColor: colors.border, borderRadius: 6 }}>
-                  <Text style={{ color: '#FFF', fontWeight: 'bold' }}>+</Text>
+                }} style={styles.quantityBtn}>
+                  <Text style={styles.quantityBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
-            <View style={localStyles.switchRow}>
-              <Text style={localStyles.switchLabel}>Max Pins Limit</Text>
-              <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 15 }}>{pinLimit} Items</Text>
-            </View>
-          </View>
-        );
-        break;
 
-      case 'emojis':
-        title = 'Emoji Settings';
-        desc = 'Choose layout sizes and category layouts for quick symbol inputs.';
-        content = (
-          <View>
-            <Text style={[localStyles.settingItemTitle, { marginBottom: 12 }]}>Emoji Grid Scale</Text>
-            {['small', 'medium', 'large'].map((scale) => (
-              <TouchableOpacity
-                key={scale}
-                style={[
-                  localStyles.settingItem,
-                  { borderBottomColor: emojiScale === scale ? colors.primary : colors.border }
-                ]}
-                onPress={() => {
-                  setEmojiScale(scale);
-                  saveStringPref('emoji_scale', scale);
-                }}
-              >
-                <Text style={[localStyles.settingItemTitle, { textTransform: 'capitalize', color: emojiScale === scale ? colors.primary : colors.text }]}>
-                  {scale} Size Grid
-                </Text>
-                {emojiScale === scale && <Text style={{ color: colors.primary, fontWeight: 'bold' }}>✓</Text>}
-              </TouchableOpacity>
-            ))}
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Max Pins Limit</Text>
+                <Text style={styles.settingItemSubtitle}>Maximum number of sticky pinned items</Text>
+              </View>
+              <Text style={styles.badgeTextGreen}>{pinLimit} Items</Text>
+            </View>
           </View>
         );
         break;
 
       case 'addons':
-        title = 'Addons & Extensions';
-        desc = 'Integrate third-party services like instant languages translator and speech recognition.';
+        title = 'Extensions';
+        desc = 'Integrate third-party services like voice dictation translators and offline speech engines.';
         content = (
           <View>
-            <View style={localStyles.switchRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={localStyles.switchLabel}>Voice Dictation Engine</Text>
-                <Text style={localStyles.settingItemSubtitle}>Convert spoken word to text instantly</Text>
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Voice Dictation Engine</Text>
+                <Text style={styles.settingItemSubtitle}>Convert spoken words to text on the fly</Text>
               </View>
               <Switch
                 value={addonVoiceText}
@@ -847,13 +588,15 @@ export default function App() {
                   setAddonVoiceText(val);
                   saveBooleanPref('addon_voice_text', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={addonVoiceText ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
-            <View style={localStyles.switchRow}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={localStyles.switchLabel}>Google Translate Integration</Text>
-                <Text style={localStyles.settingItemSubtitle}>Translate written text in real time</Text>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Google Translate Integration</Text>
+                <Text style={styles.settingItemSubtitle}>Translate inputs in real-time instantly</Text>
               </View>
               <Switch
                 value={addonTranslate}
@@ -861,7 +604,8 @@ export default function App() {
                   setAddonTranslate(val);
                   saveBooleanPref('addon_translate', val);
                 }}
-                trackColor={{ true: colors.primary }}
+                thumbColor={addonTranslate ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
           </View>
@@ -869,40 +613,40 @@ export default function App() {
         break;
 
       case 'other':
-        title = 'Other Settings';
-        desc = 'Advanced backup, configuration wipes, and developer troubleshooting keys.';
+        title = 'Advanced Options';
+        desc = 'Manage backups, clear profiles, configuration resets, and developer items.';
         content = (
           <View>
             <TouchableOpacity
-              style={[localStyles.button, { backgroundColor: colors.border }]}
+              style={[styles.actionButton, { backgroundColor: palette.surfaceSecondary, borderWidth: 1, borderColor: palette.border }]}
               onPress={() => {
-                alert('Preferences backup created successfully!');
+                Alert.alert("Backup", "Preferences backup profile created successfully!");
               }}
             >
-              <Text style={localStyles.buttonText}>Backup Settings Profile</Text>
+              <Text style={styles.actionButtonText}>Backup Settings Profile</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[localStyles.button, { backgroundColor: '#EF4444' }]}
+              style={[styles.actionButton, { backgroundColor: 'rgba(255, 92, 92, 0.1)', borderWidth: 1, borderColor: palette.red, marginTop: 14 }]}
               onPress={() => {
-                setTheme('dark');
+                setTheme('green');
                 setSoundEnabled(false);
                 setVibeEnabled(true);
                 setNumberRowEnabled(true);
                 setKeyboardHeight(270);
                 setKeySpacing(4);
                 setLongPressDelay(400);
-                saveStringPref('theme', 'dark');
+                saveStringPref('theme', 'green');
                 saveBooleanPref('sound_enabled', false);
                 saveBooleanPref('vibration_enabled', true);
                 saveBooleanPref('number_row_enabled', true);
                 saveIntPref('keyboard_height_dp', 270);
                 saveIntPref('key_spacing_dp', 4);
                 saveIntPref('long_press_delay_ms', 400);
-                alert('All settings reset to default values.');
+                Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >
-              <Text style={localStyles.buttonText}>Wipe Settings & Reset All</Text>
+              <Text style={[styles.actionButtonText, { color: palette.red }]}>Wipe Settings & Reset All</Text>
             </TouchableOpacity>
           </View>
         );
@@ -915,185 +659,317 @@ export default function App() {
     return (
       <View style={{ flex: 1 }}>
         <TouchableOpacity
-          style={localStyles.backHeader}
+          style={styles.backHeader}
           onPress={() => setActiveSection(null)}
         >
-          <Text style={{ color: colors.primary, fontSize: 20 }}>←</Text>
-          <Text style={localStyles.backHeaderText}>Back to Settings</Text>
+          <Text style={styles.backHeaderArrow}>‹</Text>
+          <Text style={styles.backHeaderText}>Back to Settings</Text>
         </TouchableOpacity>
-        <ScrollView style={localStyles.sectionContent}>
-          <Text style={localStyles.sectionTitle}>{title}</Text>
-          <Text style={localStyles.sectionDesc}>{desc}</Text>
-          {content}
+        <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+          <Text style={styles.sectionHeaderTitle}>{title}</Text>
+          <Text style={styles.sectionHeaderDesc}>{desc}</Text>
+          <View style={styles.sectionCardWrapper}>{content}</View>
         </ScrollView>
       </View>
     );
   };
 
-  // Render Home Tab
   const renderHome = () => {
     return (
-      <ScrollView style={localStyles.scrollContent}>
-        {/* Status wizard card */}
-        <View style={localStyles.card}>
-          <Text style={localStyles.cardTitle}>Keyboard Wizard Status</Text>
-          <View style={localStyles.statusRow}>
-            <Text style={localStyles.statusLabel}>Enabled in Settings:</Text>
-            <Text
-              style={[
-                localStyles.statusValue,
-                { color: isKeyboardEnabled ? '#10B981' : '#EF4444' }
-              ]}
-            >
-              {isKeyboardEnabled ? 'ENABLED' : 'DISABLED'}
-            </Text>
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Large Premium Hero Card */}
+        <View style={styles.heroCard}>
+          {/* Accent Blobs */}
+          <View style={[styles.glowBlob, { backgroundColor: palette.emerald, left: -40, top: -45 }]} />
+          <View style={[styles.glowBlob, { backgroundColor: palette.blue, right: -40, bottom: -45 }]} />
+
+          <View style={styles.heroHeader}>
+            <View>
+              <Text style={styles.heroBrandText}>Orbit Keyboard</Text>
+              <Text style={styles.heroEditionText}>Premium Edition • v2.1.0</Text>
+            </View>
+            <View style={[styles.heroStatusChip, { backgroundColor: isKeyboardDefault ? 'rgba(0,214,143,0.12)' : 'rgba(255,176,32,0.12)' }]}>
+              <View style={[styles.heroStatusDot, { backgroundColor: isKeyboardDefault ? palette.emerald : palette.orange }]} />
+              <Text style={[styles.heroStatusText, { color: isKeyboardDefault ? palette.emerald : palette.orange }]}>
+                {isKeyboardDefault ? 'Active' : 'Setup Required'}
+              </Text>
+            </View>
           </View>
-          <View style={localStyles.statusRow}>
-            <Text style={localStyles.statusLabel}>Active Default Input:</Text>
-            <Text
-              style={[
-                localStyles.statusValue,
-                { color: isKeyboardDefault ? '#10B981' : '#F59E0B' }
-              ]}
-            >
-              {isKeyboardDefault ? 'ACTIVE' : 'INACTIVE'}
-            </Text>
+
+          {/* Graphical Premium Keyboard Representation */}
+          <View style={styles.kbIllustration}>
+            <View style={styles.kbRow}>
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+              <View style={[styles.kbKey, { borderColor: palette.emerald, borderWidth: 1 }]} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+            </View>
+            <View style={styles.kbRow}>
+              <View style={styles.kbKey} />
+              <View style={[styles.kbKey, { backgroundColor: palette.emerald, border: 0 }]} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+              <View style={styles.kbKey} />
+            </View>
+            <View style={[styles.kbRow, { paddingHorizontal: 12 }]}>
+              <View style={[styles.kbKey, { flex: 1.3 }]} />
+              <View style={[styles.kbKey, { flex: 4, backgroundColor: 'rgba(255,255,255,0.06)' }]} />
+              <View style={[styles.kbKey, { flex: 1.3, backgroundColor: palette.blue, border: 0 }]} />
+            </View>
           </View>
         </View>
 
-        {/* Dynamic Action Buttons */}
-        {!isKeyboardEnabled && (
+        {/* Quick Actions Grid */}
+        <Text style={styles.gridSectionHeading}>Quick Actions</Text>
+        <View style={styles.quickActionsContainer}>
           <TouchableOpacity
-            style={[localStyles.button, { backgroundColor: '#F59E0B' }]}
+            style={styles.quickActionCard}
             onPress={openKeyboardSettings}
           >
-            <Text style={localStyles.buttonText}>1. Enable Orbit Keyboard</Text>
+            <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(0, 214, 143, 0.12)' }]}>
+              <Text style={{ fontSize: 18, color: palette.emerald }}>🔌</Text>
+            </View>
+            <Text style={styles.quickActionLabel}>Enable</Text>
           </TouchableOpacity>
-        )}
 
-        {isKeyboardEnabled && !isKeyboardDefault && (
           <TouchableOpacity
-            style={[localStyles.button, { backgroundColor: colors.primary }]}
+            style={styles.quickActionCard}
             onPress={selectKeyboard}
           >
-            <Text style={localStyles.buttonText}>2. Select Orbit Keyboard</Text>
+            <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(79, 140, 255, 0.12)' }]}>
+              <Text style={{ fontSize: 18, color: palette.blue }}>⌨️</Text>
+            </View>
+            <Text style={styles.quickActionLabel}>Open / Switch</Text>
           </TouchableOpacity>
-        )}
 
-        {isKeyboardDefault && (
           <TouchableOpacity
-            style={[localStyles.button, { backgroundColor: '#10B981' }]}
-            onPress={selectKeyboard}
+            style={styles.quickActionCard}
+            onPress={() => {
+              if (activeTab === 'home') {
+                Alert.alert("Interactive Test", "Scroll down to tap on the interactive Test Box input field.");
+              }
+            }}
           >
-            <Text style={localStyles.buttonText}>Switch / Disable Keyboard</Text>
+            <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 176, 32, 0.12)' }]}>
+              <Text style={{ fontSize: 18, color: palette.orange }}>✍️</Text>
+            </View>
+            <Text style={styles.quickActionLabel}>Test Input</Text>
           </TouchableOpacity>
-        )}
+
+          <TouchableOpacity
+            style={styles.quickActionCard}
+            onPress={() => {
+              setActiveTab('settings');
+              setActiveSection(null);
+            }}
+          >
+            <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 92, 92, 0.12)' }]}>
+              <Text style={{ fontSize: 18, color: palette.red }}>⚙️</Text>
+            </View>
+            <Text style={styles.quickActionLabel}>Settings</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Dashboard Statistics Grid */}
+        <Text style={styles.gridSectionHeading}>Dashboard Statistics</Text>
+        <View style={styles.dashboardGrid}>
+          <View style={styles.dashboardWidget}>
+            <Text style={styles.widgetTitle}>Status</Text>
+            <Text style={[styles.widgetVal, { color: isKeyboardEnabled ? palette.emerald : palette.red }]}>
+              {isKeyboardEnabled ? 'Active' : 'Disabled'}
+            </Text>
+            <Text style={styles.widgetSub}>Settings service</Text>
+          </View>
+
+          <View style={styles.dashboardWidget}>
+            <Text style={styles.widgetTitle}>Languages</Text>
+            <Text style={[styles.widgetVal, { color: palette.blue }]}>
+              {selectedLanguages.length}
+            </Text>
+            <Text style={styles.widgetSub}>Active layout sets</Text>
+          </View>
+
+          <View style={styles.dashboardWidget}>
+            <Text style={styles.widgetTitle}>Active Theme</Text>
+            <Text style={[styles.widgetVal, { color: palette.orange, textTransform: 'capitalize' }]}>
+              {theme}
+            </Text>
+            <Text style={styles.widgetSub}>Interface skin profile</Text>
+          </View>
+
+          <View style={styles.dashboardWidget}>
+            <Text style={styles.widgetTitle}>Clipboard cap</Text>
+            <Text style={[styles.widgetVal, { color: palette.emerald }]}>
+              {clipboardLimit}
+            </Text>
+            <Text style={styles.widgetSub}>Maximum history log</Text>
+          </View>
+        </View>
 
         {/* Test interactive area */}
-        <View style={localStyles.testCard}>
-          <Text style={localStyles.cardTitle}>Test Your Overhauled Keyboard</Text>
-          <Text style={{ fontSize: 12, color: colors.subtext, marginBottom: 8 }}>
+        <View style={styles.premiumCard}>
+          <Text style={styles.premiumCardTitle}>Test Your Overhauled Keyboard</Text>
+          <Text style={styles.premiumCardDesc}>
             Tap the input field below to test settings like customizable keyspacing, long press delays, double-tap shift lock, word suggestions, and drag resizing handles.
           </Text>
           <TextInput
-            style={localStyles.textInput}
+            style={styles.premiumInputBox}
             placeholder="Tap here to test NeoType input..."
-            placeholderTextColor={colors.subtext}
+            placeholderTextColor="rgba(255,255,255,0.25)"
             multiline
           />
-        </View>
-
-        {/* Keyboard Quick stats card */}
-        <View style={localStyles.card}>
-          <Text style={localStyles.cardTitle}>Engine Specs</Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, lineHeight: 18 }}>
-            • <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>SVG Code Icons</Text>: Special keys render beautiful vector paths directly on the canvas without raw text or emojis.{"\n"}
-            • <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Gesture Resize Mode</Text>: Tap "↕" in the toolbar and drag handles on the sides/top to change height and margins on the fly.{"\n"}
-            • <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Auto Correct & Word Suggestions</Text>: Live prefix indexing highlights vocabulary recommendations in real-time.
-          </Text>
         </View>
       </ScrollView>
     );
   };
 
-  // Render Main Settings Page
   const renderSettings = () => {
     if (activeSection) {
       return renderSectionDetails();
     }
 
-    const sections = [
-      { id: 'language', title: 'Language & Layout', subtitle: 'Phonetic input mappings & system layout', symbol: '🌐' },
-      { id: 'theme', title: 'Theme Store', subtitle: 'Change glow presets, accent colors, and background styles', symbol: '🎨' },
-      { id: 'keyboard', title: 'Keyboard Settings', subtitle: 'Configure key spacing, delays, haptics, and row options', symbol: '⌨️' },
-      { id: 'smartbar', title: 'Smartbar Configurations', subtitle: 'Choose buttons to place on the keyboard top bar', symbol: '🚀' },
-      { id: 'typing', title: 'Typing & Corrections', subtitle: 'Configure auto-capitalizations, spacing, and suggest terms', symbol: '✍️' },
-      { id: 'clipboard', title: 'Clipboard History', subtitle: 'Adjust item retention, pinned storage caps, and clipboard actions', symbol: '📋' },
-      { id: 'addons', title: 'Addons & Extensions', subtitle: 'Integrate dictation speech tools and offline translators', symbol: '🧩' },
-      { id: 'other', title: 'Other Settings', subtitle: 'Manage configuration backups, data wipes, and defaults', symbol: '⚙️' },
+    const groups = [
+      {
+        header: 'Appearance',
+        items: [
+          { id: 'theme', title: 'Theme Store', subtitle: 'Change glow presets, accent colors, and background styles', symbol: '🎨' }
+        ]
+      },
+      {
+        header: 'Keyboard Settings',
+        items: [
+          { id: 'keyboard', title: 'Height & Layout spacing', subtitle: 'Configure key heights, padding offsets, sound & vibrations', symbol: '⌨️' },
+          { id: 'gesture', title: 'Gesture Glide Typing', subtitle: 'Type by swiping paths across key overlays', symbol: '📐' }
+        ]
+      },
+      {
+        header: 'Text & Corrections',
+        items: [
+          { id: 'typing', title: 'Typing & Corrections', subtitle: 'Configure auto-capitalizations, suggestions & corrections', symbol: '✍️' }
+        ]
+      },
+      {
+        header: 'Clipboard Settings',
+        items: [
+          { id: 'clipboard', title: 'Clipboard History logs', subtitle: 'Adjust item retention, pinned storage caps, and clipboard actions', symbol: '📋' }
+        ]
+      },
+      {
+        header: 'Advanced features',
+        items: [
+          { id: 'language', title: 'Language Profiles', subtitle: 'Select active layouts and toggle phonetic indices', symbol: '🌐' },
+          { id: 'addons', title: 'Addons & Extension links', subtitle: 'Integrate real time translation and dictation tools', symbol: '🧩' },
+          { id: 'other', title: 'Advanced developer keys', subtitle: 'Manage configuration backups, data wipes, and defaults', symbol: '⚙️' }
+        ]
+      }
     ];
 
     return (
-      <ScrollView style={localStyles.scrollContent}>
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 16 }}>
-          Control Panel Mappings
-        </Text>
-        {sections.map((sec) => (
-          <TouchableOpacity
-            key={sec.id}
-            style={localStyles.settingItem}
-            onPress={() => setActiveSection(sec.id)}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-              <Text style={{ fontSize: 20, marginRight: 16 }}>{sec.symbol}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={localStyles.settingItemTitle}>{sec.title}</Text>
-                <Text style={localStyles.settingItemSubtitle}>{sec.subtitle}</Text>
-              </View>
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+        <Text style={styles.settingsMainTitle}>Control Panel Mappings</Text>
+        {groups.map((group, gIdx) => (
+          <View key={gIdx} style={{ marginBottom: 20 }}>
+            <Text style={styles.settingsGroupHeader}>{group.header}</Text>
+            <View style={styles.settingsGroupCard}>
+              {group.items.map((sec, iIdx) => {
+                const isLast = iIdx === group.items.length - 1;
+                return (
+                  <TouchableOpacity
+                    key={sec.id}
+                    style={[styles.settingsGroupRow, !isLast && styles.settingsGroupRowBorder]}
+                    onPress={() => setActiveSection(sec.id)}
+                  >
+                    <View style={styles.settingsRowContent}>
+                      <View style={styles.settingsIconWrapper}>
+                        <Text style={{ fontSize: 18 }}>{sec.symbol}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.settingsRowTitle}>{sec.title}</Text>
+                        <Text style={styles.settingsRowSubtitle}>{sec.subtitle}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.settingsChevron}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-            <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 16 }}>→</Text>
-          </TouchableOpacity>
+          </View>
         ))}
       </ScrollView>
     );
   };
 
-  // Render About & Help Page
   const renderAbout = () => {
     return (
-      <ScrollView style={localStyles.scrollContent}>
-        <View style={localStyles.card}>
-          <Text style={[localStyles.cardTitle, { color: colors.primary, fontSize: 18 }]}>Orbit Keyboard</Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, marginBottom: 12 }}>
-            Premium Android keyboard service configured with custom React Native settings.
-          </Text>
-          <Text style={{ color: colors.text, fontSize: 13, fontWeight: 'bold' }}>
-            Version: 2.1.0-premium
-          </Text>
-          <Text style={{ color: colors.text, fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
-            API Status: SharedPreferences Connected
-          </Text>
+      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Large logo representation */}
+        <View style={styles.aboutHeader}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoText}>O</Text>
+          </View>
+          <Text style={styles.aboutTitle}>Orbit Keyboard</Text>
+          <Text style={styles.aboutEdition}>Premium Edition</Text>
+          <View style={styles.versionBadge}>
+            <Text style={styles.versionBadgeText}>v2.1.0-premium</Text>
+          </View>
         </View>
 
-        <View style={localStyles.card}>
-          <Text style={localStyles.cardTitle}>Guide & Mappings</Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
-            1. Double tap the <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Shift Arrow (⇧)</Text> to enable Caps Lock. Single tap to type a single capital letter.
-          </Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
-            2. Drag borders in <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Resize Pane (↕)</Text> to change keyboard height and margins. Tap Save to apply.
-          </Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
-            3. Tap <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Clipboard (📋)</Text> on keyboard toolbar to access copied clipboard logs. Tap pin to save, or X to wipe.
-          </Text>
-          <Text style={{ color: colors.subtext, fontSize: 13, lineHeight: 18 }}>
-            4. Tap <Text style={{ color: '#FFFFFF', fontWeight: 'bold' }}>Smiley (☺)</Text> on keyboard toolbar to open the multi-category emoji panel.
-          </Text>
+        {/* Animated status chips row */}
+        <View style={styles.chipsRow}>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusChipLabel}>🟢 Active</Text>
+          </View>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusChipLabel}>🔒 Secure</Text>
+          </View>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusChipLabel}>⚡ Fast</Text>
+          </View>
         </View>
 
-        <View style={{ alignItems: 'center', marginTop: 20 }}>
-          <Text style={{ color: colors.subtext, fontSize: 11 }}>
-            © 2026 NeoType Inc. All rights reserved.
+        {/* Feature Cards Grid */}
+        <Text style={styles.gridSectionHeading}>Engine Specs</Text>
+        <View style={styles.featuresContainer}>
+          {[
+            { title: 'Smart Suggestions', desc: 'Prefix vocabulary indexing recommends dictionary terms dynamically.' },
+            { title: 'Gesture Resize', desc: 'Tap resize handles in the toolbar to adjust margins & height on screen.' },
+            { title: 'Clipboard Manager', desc: 'Secure local storage keeps track of logs & pin limits safely.' },
+            { title: 'Emoji Engine', desc: 'Hold down emoji categories to continuous type them instantly.' },
+          ].map((item, idx) => (
+            <View key={idx} style={styles.featureCard}>
+              <Text style={styles.featureCardTitle}>{item.title}</Text>
+              <Text style={styles.featureCardDesc}>{item.desc}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Social Links Row */}
+        <Text style={styles.gridSectionHeading}>Community</Text>
+        <View style={styles.socialRow}>
+          {[
+            { label: 'GitHub', url: 'https://github.com/sid238/voice-translator-keyboard' },
+            { label: 'Telegram', url: 'https://t.me' },
+            { label: 'Website', url: 'https://google.com' },
+            { label: 'Email', url: 'mailto:support@orbit.com' },
+          ].map((soc, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={styles.socialButton}
+              onPress={() => Linking.openURL(soc.url)}
+            >
+              <Text style={styles.socialButtonText}>{soc.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Bottom Copyright in a glass container */}
+        <View style={styles.glassCopyright}>
+          <Text style={styles.copyrightText}>
+            © 2026 NeoType Inc. All rights reserved. Registered flagship layout.
           </Text>
         </View>
       </ScrollView>
@@ -1101,24 +977,8 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={localStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.card} />
-
-      {/* Header */}
-      <View style={localStyles.header}>
-        <Text style={localStyles.headerTitle}>Orbit</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={{ color: colors.subtext, fontSize: 12, marginRight: 8 }}>
-            {isKeyboardDefault ? 'Active Default' : 'Setup Required'}
-          </Text>
-          <View
-            style={[
-              localStyles.headerStatusDot,
-              { backgroundColor: isKeyboardDefault ? '#10B981' : '#F59E0B' }
-            ]}
-          />
-        </View>
-      </View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
       {/* Main Tab Render */}
       <View style={{ flex: 1 }}>
@@ -1127,49 +987,686 @@ export default function App() {
         {activeTab === 'about' && renderAbout()}
       </View>
 
-      {/* Bottom Navigation (Hidden when keyboard is visible to avoid overlaps) */}
+      {/* Bottom Floating Navigation (Hidden when keyboard is active to avoid overlaps) */}
       {!isKeyboardVisible && (
-        <View style={localStyles.navBar}>
-          <TouchableOpacity
-            style={localStyles.navItem}
-            onPress={() => {
-              setActiveTab('home');
-              setActiveSection(null);
-            }}
-          >
-            <Text style={{ fontSize: 18, color: activeTab === 'home' ? colors.primary : colors.subtext }}>🏠</Text>
-            <Text style={[localStyles.navText, { color: activeTab === 'home' ? colors.primary : colors.subtext }]}>
-              Home
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={localStyles.navItem}
-            onPress={() => {
-              setActiveTab('settings');
-              setActiveSection(null);
-            }}
-          >
-            <Text style={{ fontSize: 18, color: activeTab === 'settings' ? colors.primary : colors.subtext }}>⚙️</Text>
-            <Text style={[localStyles.navText, { color: activeTab === 'settings' ? colors.primary : colors.subtext }]}>
-              Settings
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={localStyles.navItem}
-            onPress={() => {
-              setActiveTab('about');
-              setActiveSection(null);
-            }}
-          >
-            <Text style={{ fontSize: 18, color: activeTab === 'about' ? colors.primary : colors.subtext }}>ℹ️</Text>
-            <Text style={[localStyles.navText, { color: activeTab === 'about' ? colors.primary : colors.subtext }]}>
-              About
-            </Text>
-          </TouchableOpacity>
+        <View style={styles.floatingNavBar}>
+          {[
+            { id: 'home', label: 'Home', icon: '🏠' },
+            { id: 'settings', label: 'Settings', icon: '⚙️' },
+            { id: 'about', label: 'About', icon: 'ℹ️' },
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.floatingNavItem, isActive && styles.floatingNavItemActive]}
+                onPress={() => {
+                  setActiveTab(tab.id);
+                  setActiveSection(null);
+                }}
+              >
+                <Text style={[styles.floatingNavIcon, isActive && { color: palette.emerald }]}>
+                  {tab.icon}
+                </Text>
+                <Text style={[styles.floatingNavLabel, isActive && styles.floatingNavLabelActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+    paddingTop: StatusBar.currentHeight || 0,
+  },
+  scrollContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  backHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F1F1F',
+    backgroundColor: '#000000',
+  },
+  backHeaderArrow: {
+    color: '#00D68F',
+    fontSize: 28,
+    marginRight: 12,
+    fontWeight: '300',
+  },
+  backHeaderText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  sectionHeaderTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 20,
+    paddingHorizontal: 4,
+    letterSpacing: -0.5,
+  },
+  sectionHeaderDesc: {
+    fontSize: 14,
+    color: '#A0A0A0',
+    marginTop: 6,
+    paddingHorizontal: 4,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  sectionCardWrapper: {
+    backgroundColor: '#121212',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 16,
+    marginBottom: 40,
+  },
+  heroCard: {
+    backgroundColor: '#121212',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 24,
+    marginBottom: 28,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  glowBlob: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    opacity: 0.15,
+  },
+  heroHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    zIndex: 2,
+  },
+  heroBrandText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  heroEditionText: {
+    fontSize: 13,
+    color: '#A0A0A0',
+    marginTop: 2,
+  },
+  heroStatusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  heroStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  heroStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  kbIllustration: {
+    marginTop: 30,
+    width: '100%',
+    padding: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    zIndex: 2,
+  },
+  kbRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+    marginBottom: 5,
+  },
+  kbKey: {
+    height: 22,
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 4,
+  },
+  gridSectionHeading: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#A0A0A0',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 14,
+    paddingLeft: 4,
+  },
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 28,
+    gap: 10,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: '#121212',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionIconBg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  quickActionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  dashboardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 28,
+    gap: 12,
+  },
+  dashboardWidget: {
+    width: '48%',
+    backgroundColor: '#121212',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 18,
+  },
+  widgetTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#A0A0A0',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  widgetVal: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 8,
+    letterSpacing: -0.5,
+  },
+  widgetSub: {
+    fontSize: 11,
+    color: '#555555',
+    marginTop: 4,
+  },
+  premiumCard: {
+    backgroundColor: '#121212',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 20,
+    marginBottom: 30,
+  },
+  premiumCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  premiumCardDesc: {
+    fontSize: 12,
+    color: '#A0A0A0',
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  premiumInputBox: {
+    backgroundColor: '#000000',
+    color: '#FFFFFF',
+    borderRadius: 16,
+    borderColor: '#1F1F1F',
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 13,
+    height: 76,
+    textAlignVertical: 'top',
+    marginTop: 16,
+  },
+  settingsMainTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    marginBottom: 24,
+    paddingHorizontal: 4,
+  },
+  settingsGroupHeader: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#A0A0A0',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 10,
+    paddingLeft: 4,
+  },
+  settingsGroupCard: {
+    backgroundColor: '#121212',
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    overflow: 'hidden',
+  },
+  settingsGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+  },
+  settingsGroupRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F1F1F',
+  },
+  settingsRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  settingsIconWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  settingsRowTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  settingsRowSubtitle: {
+    fontSize: 11,
+    color: '#A0A0A0',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  settingsChevron: {
+    fontSize: 20,
+    color: '#555555',
+    fontWeight: '300',
+  },
+  aboutHeader: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 28,
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#00D68F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#00D68F',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  logoText: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: '#000000',
+  },
+  aboutTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  aboutEdition: {
+    fontSize: 14,
+    color: '#00D68F',
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  versionBadge: {
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  versionBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A0A0A0',
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 30,
+  },
+  statusChip: {
+    backgroundColor: '#121212',
+    borderColor: '#1F1F1F',
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  statusChipLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  featuresContainer: {
+    gap: 12,
+    marginBottom: 28,
+  },
+  featureCard: {
+    backgroundColor: '#121212',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 18,
+  },
+  featureCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  featureCardDesc: {
+    fontSize: 12,
+    color: '#A0A0A0',
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  socialRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 30,
+  },
+  socialButton: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#121212',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  socialButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  glassCopyright: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  copyrightText: {
+    fontSize: 11,
+    color: '#555555',
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  floatingNavBar: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    right: 20,
+    height: 64,
+    backgroundColor: 'rgba(18, 18, 18, 0.85)',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  floatingNavItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    height: '100%',
+  },
+  floatingNavItemActive: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  floatingNavIcon: {
+    fontSize: 18,
+    color: '#A0A0A0',
+  },
+  floatingNavLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A0A0A0',
+    marginTop: 4,
+  },
+  floatingNavLabelActive: {
+    color: '#00D68F',
+  },
+  settingItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 18,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F1F1F',
+  },
+  customRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#555555',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customRadioActive: {
+    borderColor: '#00D68F',
+  },
+  customRadioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#00D68F',
+  },
+  themeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  themeCard: {
+    width: '48%',
+    height: 100,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  themeCardName: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  themePill: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignSelf: 'flex-end',
+  },
+  wallpaperContainer: {
+    marginTop: 24,
+    padding: 18,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+  },
+  wallpaperTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  wallpaperSubtitle: {
+    color: '#A0A0A0',
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 16,
+    marginBottom: 16,
+  },
+  wallpaperBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  wallpaperBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  settingSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1F1F1F',
+  },
+  spacingSliderGroup: {
+    marginTop: 20,
+  },
+  sliderHeading: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  sliderDesc: {
+    fontSize: 11,
+    color: '#A0A0A0',
+    marginTop: 2,
+  },
+  tabsSelectorRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    padding: 4,
+    gap: 4,
+  },
+  tabSelectorCell: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabSelectorCellActive: {
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+  },
+  tabSelectorCellText: {
+    color: '#A0A0A0',
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  tabSelectorCellTextActive: {
+    color: '#00D68F',
+  },
+  quantityWidget: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quantityBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+  },
+  quantityBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  quantityValue: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+    marginHorizontal: 12,
+  },
+  badgeTextGreen: {
+    color: '#00D68F',
+    fontWeight: '800',
+    fontSize: 13,
+    backgroundColor: 'rgba(0,214,143,0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  actionButton: {
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+});
