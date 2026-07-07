@@ -52,6 +52,7 @@ class GlideTypeKeyboardService : InputMethodService() {
     private var keyboardWidthPercent = 100
     private var keyboardGravity = Gravity.CENTER_HORIZONTAL
     private var isSymbolsPage2 = false
+    private var lastProcessedSystemClip: String? = null
 
     // Settings fields (synced from SharedPrefs)
     private var vibrationEnabled = true
@@ -356,6 +357,14 @@ class GlideTypeKeyboardService : InputMethodService() {
                 e.printStackTrace()
             }
         }
+        if (clipboardHistory.isEmpty()) {
+            clipboardHistory.add(
+                ClipboardItem(
+                    text = "Welcome to Orbit Keyboard! Tap to paste, pin items to save them permanently.",
+                    isPinned = true
+                )
+            )
+        }
     }
 
     private fun savePreferences() {
@@ -406,7 +415,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                 val clipData = clipboard.primaryClip
                 if (clipData != null && clipData.itemCount > 0) {
                     val text = clipData.getItemAt(0).text?.toString()?.trim()
-                    if (!text.isNullOrEmpty()) {
+                    if (!text.isNullOrEmpty() && text != lastProcessedSystemClip) {
+                        lastProcessedSystemClip = text
                         addClipboardItem(text)
                     }
                 }
@@ -523,6 +533,10 @@ class GlideTypeKeyboardService : InputMethodService() {
 
         if (isTranslationActive) {
             mainLayout.addView(createTranslationToolbar())
+        } else if (currentViewMode == ViewMode.CLIPBOARD) {
+            mainLayout.addView(createNavigationToolbar("Clipboard History"))
+        } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
+            mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
         } else {
             mainLayout.addView(createToolbar())
         }
@@ -1150,6 +1164,52 @@ class GlideTypeKeyboardService : InputMethodService() {
         return toolbar
     }
 
+    private fun createNavigationToolbar(title: String): View {
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(40)
+            )
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+        }
+
+        val backBtn = TextView(this).apply {
+            text = "← Back"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(70), dpToPx(30))
+            setOnClickListener {
+                vibrateClick()
+                currentViewMode = ViewMode.QWERTY
+                updateKeyboardLayout()
+            }
+        }
+        toolbar.addView(backBtn)
+
+        val titleView = TextView(this).apply {
+            text = title
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1.0f
+            ).apply {
+                rightMargin = dpToPx(8)
+            }
+        }
+        toolbar.addView(titleView)
+
+        return toolbar
+    }
+
     private fun showSizeAdjustmentDialog() {
         isSizeAdjustActive = true
         updateKeyboardLayout()
@@ -1168,8 +1228,8 @@ class GlideTypeKeyboardService : InputMethodService() {
         val row1 = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
         val row2 = if (isShifted) listOf("Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P")
                    else listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
-        val row3 = if (isShifted) listOf("A", "S", "D", "F", "G", "H", "J", "K", "L")
-                   else listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
+        val row3 = if (isShifted) listOf("spacer_half", "A", "S", "D", "F", "G", "H", "J", "K", "L", "spacer_half")
+                   else listOf("spacer_half", "a", "s", "d", "f", "g", "h", "j", "k", "l", "spacer_half")
         val row4 = if (isShifted) listOf("Shift", "Z", "X", "C", "V", "B", "N", "M", "Back")
                    else listOf("shift", "z", "x", "c", "v", "b", "n", "m", "Back")
         val row5 = listOf("?123", ",", "Spacebar", ".", "Enter")
@@ -1196,11 +1256,13 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         val row1 = listOf("१", "२", "३", "४", "५", "६", "७", "८", "९", "०")
-        val row2 = listOf("क", "ख", "ग", "घ", "ङ", "च", "छ", "ज", "झ", "ञ")
-        val row3 = listOf("ट", "ठ", "ड", "ढ", "ण", "त", "थ", "द", "ध", "न")
-        val row4 = listOf("प", "फ", "ब", "भ", "म", "य", "र", "ल", "व", "श")
-        val row5 = listOf("स", "ह", "ा", "ि", "ी", "ु", "ू", "े", "ै", "ो")
-        val row6 = listOf("?123", "Back", "Spacebar", "Enter")
+        val row2 = if (isShifted) listOf("अ", "आ", "इ", "ई", "उ", "ऊ", "ऋ", "ए", "ऐ", "ओ")
+                   else listOf("क", "ख", "ग", "घ", "ङ", "च", "छ", "ज", "झ", "ञ")
+        val row3 = if (isShifted) listOf("spacer_half", "औ", "ा", "ि", "ी", "ु", "ू", "े", "ै", "ो", "spacer_half")
+                   else listOf("spacer_half", "ट", "ठ", "ड", "ढ", "ण", "त", "थ", "द", "ध", "spacer_half")
+        val row4 = if (isShifted) listOf("Shift", "ौ", "ं", "ः", "्", "ँ", "श्र", "ज्ञ", "क्ष", "Back")
+                   else listOf("Shift", "न", "प", "फ", "ब", "भ", "म", "य", "र", "ल", "Back")
+        val row5 = listOf("?123", "व", "Spacebar", "स", "ह", "Enter")
 
         if (numberRowEnabled) {
             layout.addView(createKeyRow(row1))
@@ -1209,7 +1271,6 @@ class GlideTypeKeyboardService : InputMethodService() {
         layout.addView(createKeyRow(row3))
         layout.addView(createKeyRow(row4))
         layout.addView(createKeyRow(row5))
-        layout.addView(createKeyRow(row6))
 
         return layout
     }
@@ -1264,6 +1325,18 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         for (key in keys) {
+            if (key.lowercase() == "spacer_half") {
+                val spacer = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        0,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        0.5f
+                    )
+                }
+                row.addView(spacer)
+                continue
+            }
+
             val keyView = FrameLayout(this).apply {
                 val weight = when (key.lowercase()) {
                     "spacebar", " ", "␣" -> 4.0f
@@ -1275,7 +1348,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     weight
                 ).apply {
-                    setMargins(dpToPx(3), dpToPx(3), dpToPx(3), dpToPx(3))
+                    setMargins(dpToPx(3), dpToPx(6), dpToPx(3), dpToPx(6))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
@@ -1317,7 +1390,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                 } else {
                     val mainTextView = TextView(context).apply {
                         text = when (key.lowercase()) {
-                            "spacebar" -> " "
+                            "spacebar" -> if (currentViewMode == ViewMode.HINDI) "हिन्दी" else "English"
                             else -> key
                         }
                         setTextColor(Color.WHITE)
@@ -1362,17 +1435,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
                                 if (isTranslationActive && translationInputField != null) {
                                     val et = translationInputField!!
-                                    val start = et.selectionStart
-                                    val end = et.selectionEnd
-                                    if (start > 0 || end > 0) {
-                                        if (start != end) {
-                                            et.text.delete(Math.min(start, end), Math.max(start, end))
-                                        } else {
-                                            et.text.delete(start - 1, start)
-                                        }
-                                    }
+                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                 } else {
-                                    currentInputConnection?.deleteSurroundingText(1, 0)
+                                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                 }
                                 
                                 backspaceRunnable = object : Runnable {
@@ -1381,17 +1448,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
                                         if (isTranslationActive && translationInputField != null) {
                                             val et = translationInputField!!
-                                            val start = et.selectionStart
-                                            val end = et.selectionEnd
-                                            if (start > 0 || end > 0) {
-                                                if (start != end) {
-                                                    et.text.delete(Math.min(start, end), Math.max(start, end))
-                                                } else {
-                                                    et.text.delete(start - 1, start)
-                                                }
-                                            }
+                                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                         } else {
-                                            currentInputConnection?.deleteSurroundingText(1, 0)
+                                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                         }
                                         handler.postDelayed(this, 55)
                                     }
@@ -1532,13 +1593,8 @@ class GlideTypeKeyboardService : InputMethodService() {
             val end = et.selectionEnd
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    if (start > 0 || end > 0) {
-                        if (start != end) {
-                            et.text.delete(Math.min(start, end), Math.max(start, end))
-                        } else {
-                            et.text.delete(start - 1, start)
-                        }
-                    }
+                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                 }
                 "enter", "↵" -> {
                     currentInputConnection?.finishComposingText()
@@ -2399,8 +2455,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                     val responseArray = JSONArray(response)
                     val first = responseArray.getJSONArray(0)
-                    val second = first.getJSONArray(0)
-                    val translatedText = second.getString(0)
+                    val translatedText = first.getString(0)
                     handler.post { callback(translatedText) }
                 } else {
                     handler.post { callback(null) }
@@ -2416,7 +2471,7 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     private fun playVoiceBeep(start: Boolean) {
         try {
-            val toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 100)
+            val toneGenerator = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, 100)
             if (start) {
                 toneGenerator.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 150)
             } else {
@@ -2692,7 +2747,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     1.0f
                 ).apply {
-                    setMargins(dpToPx(3), dpToPx(3), dpToPx(3), dpToPx(3))
+                    setMargins(dpToPx(3), dpToPx(6), dpToPx(3), dpToPx(6))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
