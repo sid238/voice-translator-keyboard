@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="shared_emojis" path="shared_emojis/" />
     <cache-path name="theme_images" path="theme_images/" />
+    <cache-path name="clipboard_images" path="clipboard_images/" />
 </paths>

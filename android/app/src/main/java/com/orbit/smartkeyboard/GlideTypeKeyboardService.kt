@@ -65,6 +65,13 @@ class GlideTypeKeyboardService : InputMethodService() {
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
 
+    private var isFontSelectorActive = false
+    private var currentKeyboardFont = KeyboardFont.NORMAL
+
+    enum class KeyboardFont {
+        NORMAL, BOLD, ITALIC, SCRIPT, TYPEWRITER, CIRCLED, GOTHIC, OUTLINE
+    }
+
     // Settings fields (synced from SharedPrefs)
     private var vibrationEnabled = true
     private var soundEnabled = false
@@ -1175,6 +1182,9 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     private fun createToolbar(): View {
+        if (isFontSelectorActive) {
+            return createFontSelectorView()
+        }
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(40)
         val toolbar = LinearLayout(this).apply {
@@ -1341,6 +1351,32 @@ class GlideTypeKeyboardService : InputMethodService() {
                     }
                     toolbar.addView(micBtn)
                 }
+
+                // Font Changer Button immediately next to the mic button
+                val fontActive = currentKeyboardFont != KeyboardFont.NORMAL
+                val fontBgColor = if (fontActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                val fontBtn = FrameLayout(this).apply {
+                    background = createKeyDrawable(fontBgColor, dpToPx(6))
+                    isClickable = true
+                    isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
+                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                    }
+                    setOnClickListener {
+                        vibrateClick()
+                        isFontSelectorActive = !isFontSelectorActive
+                        updateKeyboardLayout()
+                    }
+                }
+                val fontIcon = ImageView(this).apply {
+                    setImageResource(R.drawable.ic_font)
+                    setColorFilter(Color.WHITE)
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
+                        gravity = Gravity.CENTER
+                    }
+                }
+                fontBtn.addView(fontIcon)
+                toolbar.addView(fontBtn)
 
                 if (isLandscape) {
                     val pcButtons = listOf(
@@ -1876,9 +1912,14 @@ class GlideTypeKeyboardService : InputMethodService() {
             updateKeyboardLayout()
         } else {
             val str = textBefore.toString()
-            if (str.endsWith(". ") || str.endsWith("? ") || str.endsWith("! ") || str.endsWith("\n")) {
+            if (str.endsWith(" ") || str.endsWith("\n")) {
                 isShifted = true
                 updateKeyboardLayout()
+            } else {
+                if (isShifted && !isCapsLock) {
+                    isShifted = false
+                    updateKeyboardLayout()
+                }
             }
         }
     }
@@ -1942,7 +1983,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                     updateKeyboardLayout()
                 }
                 "1/2", "2/2" -> {
-                    isHindiPage2 = !isHindiPage2
+                    if (currentViewMode == ViewMode.HINDI) {
+                        isHindiPage2 = !isHindiPage2
+                    } else {
+                        isSymbolsPage2 = !isSymbolsPage2
+                    }
                     updateKeyboardLayout()
                 }
                 "abc" -> {
@@ -1954,7 +1999,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                     updateKeyboardLayout()
                 }
                 else -> {
-                    et.text.replace(Math.min(start, end), Math.max(start, end), key)
+                    val transformed = if (key.length == 1) applyFontTransformation(key) else key
+                    et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
                     if (isShifted && !isCapsLock) {
                         isShifted = false
                         updateKeyboardLayout()
@@ -2026,7 +2072,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                 updateKeyboardLayout()
             }
             else -> {
-                ic.commitText(key, 1)
+                val transformed = if (key.length == 1) applyFontTransformation(key) else key
+                ic.commitText(transformed, 1)
                 if (isShifted && !isCapsLock) {
                     isShifted = false
                 }
@@ -2034,6 +2081,247 @@ class GlideTypeKeyboardService : InputMethodService() {
                 updateKeyboardLayout()
             }
         }
+    }
+
+    private fun transformChar(c: Char, font: KeyboardFont): String {
+        if (font == KeyboardFont.NORMAL) return c.toString()
+        if (font == KeyboardFont.CIRCLED) {
+            return when (c) {
+                in 'A'..'Z' -> (0x24B6 + (c - 'A')).toChar().toString()
+                in 'a'..'z' -> (0x24D0 + (c - 'a')).toChar().toString()
+                in '1'..'9' -> (0x2460 + (c - '1')).toChar().toString()
+                '0' -> "\u24EA"
+                else -> c.toString()
+            }
+        }
+        return when (font) {
+            KeyboardFont.BOLD -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D400 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D41A + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    in '0'..'9' -> {
+                        val code = 0x1D7CE + (c - '0')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.ITALIC -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D6A8 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D6C2 + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    in '0'..'9' -> {
+                        val code = 0x1D7E2 + (c - '0')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.SCRIPT -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D4D0 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D4EA + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.TYPEWRITER -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D670 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D68A + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    in '0'..'9' -> {
+                        val code = 0x1D7F6 + (c - '0')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.GOTHIC -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D504 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D51E + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            KeyboardFont.OUTLINE -> {
+                when (c) {
+                    in 'A'..'Z' -> {
+                        val code = 0x1D538 + (c - 'A')
+                        String(Character.toChars(code))
+                    }
+                    in 'a'..'z' -> {
+                        val code = 0x1D552 + (c - 'a')
+                        String(Character.toChars(code))
+                    }
+                    in '0'..'9' -> {
+                        val code = 0x1D7D8 + (c - '0')
+                        String(Character.toChars(code))
+                    }
+                    else -> c.toString()
+                }
+            }
+            else -> c.toString()
+        }
+    }
+
+    private fun applyFontTransformation(text: String): String {
+        if (currentKeyboardFont == KeyboardFont.NORMAL) return text
+        val sb = StringBuilder()
+        for (char in text) {
+            sb.append(transformChar(char, currentKeyboardFont))
+        }
+        return sb.toString()
+    }
+
+    private fun pasteClipboardImage(item: ClipboardItem) {
+        val uriStr = item.imageUri ?: return
+        try {
+            val file = java.io.File(uriStr)
+            val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "com.orbit.smartkeyboard.fileprovider",
+                file
+            )
+            val editorInfo = currentInputEditorInfo
+            val ic = currentInputConnection
+            if (ic != null && editorInfo != null) {
+                val mimeTypes = androidx.core.view.inputmethod.EditorInfoCompat.getContentMimeTypes(editorInfo)
+                var isSupported = false
+                for (mime in mimeTypes) {
+                    if (mime.startsWith("image/")) {
+                        isSupported = true
+                        break
+                    }
+                }
+                if (isSupported) {
+                    val description = android.content.ClipDescription("Image", arrayOf("image/jpeg", "image/png", "image/webp"))
+                    val inputContentInfo = androidx.core.view.inputmethod.InputContentInfoCompat(
+                        contentUri,
+                        description,
+                        null
+                    )
+                    var flags = 0
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N_MR1) {
+                        flags = flags or androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
+                    }
+                    androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+                        ic,
+                        editorInfo,
+                        inputContentInfo,
+                        flags,
+                        null
+                    )
+                    return
+                }
+            }
+            // Fallback to Clipboard Manager
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newUri(contentResolver, "Image", contentUri)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "Copied image to clipboard (App doesn't support direct paste)", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to paste image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun createFontSelectorView(): View {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val backBtn = createToolbarIconButton(R.drawable.ic_collapse) {
+            isFontSelectorActive = false
+            updateKeyboardLayout()
+        }
+        root.addView(backBtn)
+
+        val scrollView = HorizontalScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            isHorizontalScrollBarEnabled = false
+        }
+
+        val itemsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+        }
+
+        val fonts = listOf(
+            Pair(KeyboardFont.NORMAL, "Normal"),
+            Pair(KeyboardFont.BOLD, "𝐁𝐨𝐥𝐝"),
+            Pair(KeyboardFont.ITALIC, "𝘐𝘵𝘢𝘭𝘪𝘤"),
+            Pair(KeyboardFont.SCRIPT, "𝓢𝓬𝓻𝓲𝓹𝓽"),
+            Pair(KeyboardFont.TYPEWRITER, "𝚃𝚢𝚙𝚎𝚠𝚛𝚒𝚝𝚎𝚛"),
+            Pair(KeyboardFont.CIRCLED, "Ⓒⓘⓡⓒⓛⓔⓓ"),
+            Pair(KeyboardFont.GOTHIC, "𝔊𝔬𝔱𝔥𝔦𝔠"),
+            Pair(KeyboardFont.OUTLINE, "𝕆𝕦𝕥𝕝𝕚𝕟𝕖")
+        )
+
+        for (f in fonts) {
+            val isCurrent = currentKeyboardFont == f.first
+            val bg = if (isCurrent) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+            val textBtn = TextView(this).apply {
+                text = f.second
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+                background = createKeyDrawable(bg, dpToPx(4))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                }
+                setOnClickListener {
+                    vibrateClick()
+                    currentKeyboardFont = f.first
+                    isFontSelectorActive = false
+                    updateKeyboardLayout()
+                }
+            }
+            itemsLayout.addView(textBtn)
+        }
+
+        scrollView.addView(itemsLayout)
+        root.addView(scrollView)
+        return root
     }
 
     private fun getHintForKey(key: String): String? {
@@ -2410,7 +2698,10 @@ class GlideTypeKeyboardService : InputMethodService() {
             setOnClickListener {
                 vibrateClick()
                 playClick(android.view.KeyEvent.KEYCODE_DEL)
-                currentInputConnection?.deleteSurroundingText(1, 0)
+                currentInputConnection?.let { ic ->
+                    ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                    ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                }
             }
         }
         val backspaceIcon = ImageView(this).apply {
@@ -2498,10 +2789,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         }
                         setOnClickListener {
                             vibrateClick()
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newUri(contentResolver, "Image", android.net.Uri.parse(item.imageUri))
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(this@GlideTypeKeyboardService, "Image copied to clipboard", Toast.LENGTH_SHORT).show()
+                            pasteClipboardImage(item)
                         }
                     }
                     contentLayout.addView(imageView)
@@ -2524,16 +2812,15 @@ class GlideTypeKeyboardService : InputMethodService() {
                     setOnClickListener {
                         vibrateClick()
                         if (isImage) {
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newUri(contentResolver, "Image", android.net.Uri.parse(item.imageUri))
-                            clipboard.setPrimaryClip(clip)
-                            Toast.makeText(this@GlideTypeKeyboardService, "Image copied to clipboard", Toast.LENGTH_SHORT).show()
+                            pasteClipboardImage(item)
                         } else {
                             currentInputConnection?.commitText(item.text, 1)
                         }
                     }
                 }
                 contentLayout.addView(clipTextView)
+
+                itemRow.addView(contentLayout)
 
                 if (isUrl) {
                     val browserIcon = ImageView(this).apply {
@@ -2542,7 +2829,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                         isClickable = true
                         isFocusable = true
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(35)).apply {
                             setMargins(0, 0, dpToPx(6), 0)
                         }
                         setOnClickListener {
@@ -2562,10 +2849,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                             }
                         }
                     }
-                    contentLayout.addView(browserIcon)
+                    itemRow.addView(browserIcon)
                 }
-
-                itemRow.addView(contentLayout)
 
                 val pinBtn = ImageView(this).apply {
                     setImageResource(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin)
