@@ -1435,11 +1435,23 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
                                 if (isTranslationActive && translationInputField != null) {
                                     val et = translationInputField!!
-                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                    et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                    val start = et.selectionStart
+                                    val end = et.selectionEnd
+                                    if (start != end) {
+                                        et.text.delete(Math.min(start, end), Math.max(start, end))
+                                    } else {
+                                        et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                        et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                    }
                                 } else {
-                                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                    val ic = currentInputConnection
+                                    val selected = ic?.getSelectedText(0)
+                                    if (!selected.isNullOrEmpty()) {
+                                        ic.commitText("", 1)
+                                    } else {
+                                        ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                        ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                    }
                                 }
                                 
                                 backspaceRunnable = object : Runnable {
@@ -1448,11 +1460,23 @@ class GlideTypeKeyboardService : InputMethodService() {
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
                                         if (isTranslationActive && translationInputField != null) {
                                             val et = translationInputField!!
-                                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                            val start = et.selectionStart
+                                            val end = et.selectionEnd
+                                            if (start != end) {
+                                                et.text.delete(Math.min(start, end), Math.max(start, end))
+                                            } else {
+                                                et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                                et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                            }
                                         } else {
-                                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                            val ic = currentInputConnection
+                                            val selected = ic?.getSelectedText(0)
+                                            if (!selected.isNullOrEmpty()) {
+                                                ic.commitText("", 1)
+                                            } else {
+                                                ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                                                ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                                            }
                                         }
                                         handler.postDelayed(this, 55)
                                     }
