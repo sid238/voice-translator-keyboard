@@ -196,8 +196,8 @@ export default function App() {
   const [keyboardHeight, setKeyboardHeight] = useState(270);
   // gesture removed
 
-  const [keySpacing, setKeySpacing] = useState(9);
-  const [longPressDelay, setLongPressDelay] = useState(700);
+  const [keySpacing, setKeySpacing] = useState(3);
+  const [longPressDelay, setLongPressDelay] = useState(300);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
@@ -316,9 +316,9 @@ export default function App() {
           setClipboardLimit(climit);
           const plimit = await FloatingBubble.getIntSetting('pin_limit', 10);
           setPinLimit(plimit);
-          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 9);
+          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 3);
           setKeySpacing(spacing);
-          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 700);
+          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 300);
           setLongPressDelay(delay);
         }
       }
@@ -603,7 +603,7 @@ export default function App() {
               <Text style={appTextStyles.sliderHeading}>Key Spacing (dp)</Text>
               <Text style={appTextStyles.sliderDesc}>Current spacing: {keySpacing} dp</Text>
               <View style={appStyles.tabsSelectorRow}>
-                {[2, 4, 6, 8, 9, 10].map((item) => (
+                {[1, 2, 3, 4, 5].map((item) => (
                   <TouchableOpacity
                     key={item}
                     style={[styles.tabSelectorCell, keySpacing === item && appStyles.tabSelectorCellActive]}
@@ -624,7 +624,7 @@ export default function App() {
               <Text style={appTextStyles.sliderHeading}>Long Press Delay (ms)</Text>
               <Text style={appTextStyles.sliderDesc}>Current delay: {longPressDelay} ms</Text>
               <View style={appStyles.tabsSelectorRow}>
-                {[200, 300, 400, 500, 600, 700].map((item) => (
+                {[100, 200, 300, 400, 500].map((item) => (
                   <TouchableOpacity
                     key={item}
                     style={[styles.tabSelectorCell, longPressDelay === item && appStyles.tabSelectorCellActive]}
@@ -882,15 +882,15 @@ export default function App() {
                 setVibeEnabled(true);
                 setNumberRowEnabled(true);
                 setKeyboardHeight(270);
-                setKeySpacing(6);
+                setKeySpacing(3);
                 setLongPressDelay(300);
                 saveStringPref('theme', 'green');
                 saveBooleanPref('sound_enabled', false);
                 saveBooleanPref('vibration_enabled', true);
                 saveBooleanPref('number_row_enabled', true);
                 saveIntPref('keyboard_height_dp', 270);
-                saveIntPref('key_spacing_dp', 9);
-                saveIntPref('long_press_delay_ms', 700);
+                saveIntPref('key_spacing_dp', 3);
+                saveIntPref('long_press_delay_ms', 300);
                 Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >

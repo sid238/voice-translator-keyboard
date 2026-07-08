@@ -69,8 +69,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var lastShiftPressTime: Long = 0
     private var translationInputField: EditText? = null
     // grammar now uses currentInputConnection directly
-    private var longPressDelayMs = 700
-    private var keyboardHeightDp = 270 // Default keyboard height
+    private var longPressDelayMs = 300
+    private var keyboardHeightDp = 220 // Default keyboard height
     private var isSizeAdjustActive = false
     private var keyboardWidthPercent = 100
     private var keyboardGravity = Gravity.CENTER_HORIZONTAL
@@ -83,7 +83,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = true
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 9
+    private var keySpacingDp = 3
     private var lastSpacePressTime: Long = 0
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
@@ -349,7 +349,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 270)
+        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 220)
         keyboardWidthPercent = prefs.getInt("keyboard_width_percent", 100)
         keyboardGravity = prefs.getInt("keyboard_gravity", Gravity.CENTER_HORIZONTAL)
         
@@ -360,12 +360,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
-        longPressDelayMs = prefs.getInt("long_press_delay_ms", 700)
+        longPressDelayMs = prefs.getInt("long_press_delay_ms", 300)
 
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
-        keySpacingDp = prefs.getInt("key_spacing_dp", 9)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 3)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
@@ -3211,7 +3211,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     }
                     setOnClickListener {
                         vibrateClick()
-                        handler.postDelayed({ deleteClipboardItem(item) }, 100)
+                        deleteClipboardItem(item)
                     }
                 }
                 itemRow.addView(delBtn)
@@ -3533,33 +3533,37 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             inputEditText.hint = "Prompt will use: \"$contextText\""
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Custom AI Prompt")
-            .setView(inputEditText)
-            .setPositiveButton("Send") { _: android.content.DialogInterface, _: Int ->
-                val prompt = inputEditText.text.toString()
-                if (prompt.isNotEmpty()) {
-                    Toast.makeText(this, "AI processing...", Toast.LENGTH_SHORT).show()
-                    val fullText = if (contextText.isNotEmpty()) "$prompt\n\nContext: $contextText" else prompt
-                    aiAssist("Custom", fullText) { result ->
-                        if (result != null) {
-                            if (!selectedText.isNullOrEmpty()) {
-                                ic?.commitText(result, 1)
+        try {
+            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Custom AI Prompt")
+                .setView(inputEditText)
+                .setPositiveButton("Send") { _: android.content.DialogInterface, _: Int ->
+                    val prompt = inputEditText.text.toString()
+                    if (prompt.isNotEmpty()) {
+                        Toast.makeText(this, "AI processing...", Toast.LENGTH_SHORT).show()
+                        val fullText = if (contextText.isNotEmpty()) "$prompt\n\nContext: $contextText" else prompt
+                        aiAssist("Custom", fullText) { result ->
+                            if (result != null) {
+                                if (!selectedText.isNullOrEmpty()) {
+                                    ic?.commitText(result, 1)
+                                } else {
+                                    ic?.deleteSurroundingText(textBefore.length, textAfter.length)
+                                    ic?.commitText(result, 1)
+                                }
+                                Toast.makeText(this, "Done!", Toast.LENGTH_SHORT).show()
                             } else {
-                                ic?.deleteSurroundingText(textBefore.length, textAfter.length)
-                                ic?.commitText(result, 1)
+                                Toast.makeText(this, "AI request failed", Toast.LENGTH_SHORT).show()
                             }
-                            Toast.makeText(this, "Done!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this, "AI request failed", Toast.LENGTH_SHORT).show()
                         }
+                    } else {
+                        Toast.makeText(this, "Please enter a prompt", Toast.LENGTH_SHORT).show()
                     }
-                } else {
-                    Toast.makeText(this, "Please enter a prompt", Toast.LENGTH_SHORT).show()
                 }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+                .setNegativeButton("Cancel", null)
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Dialog error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun aiAssist(action: String, text: String, callback: (String?) -> Unit) {
@@ -3598,12 +3602,25 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     os.flush()
                 }
 
-                if (conn.responseCode == 200) {
-                    val response = conn.inputStream.use { inputStream ->
+                val responseCode = conn.responseCode
+                val response = if (responseCode == 200) {
+                    conn.inputStream.use { inputStream ->
                         java.io.BufferedReader(java.io.InputStreamReader(inputStream, "UTF-8")).use { reader ->
                             reader.readText()
                         }
                     }
+                } else {
+                    val errorStream = conn.errorStream?.let { errorStream ->
+                        java.io.BufferedReader(java.io.InputStreamReader(errorStream, "UTF-8")).use { reader ->
+                            reader.readText()
+                        }
+                    } ?: "Unknown error"
+                    android.util.Log.e("AI_Assist", "API error $responseCode: $errorStream")
+                    handler.post { callback(null) }
+                    return@Thread
+                }
+
+                try {
                     val json = org.json.JSONObject(response)
                     val candidates = json.getJSONArray("candidates")
                     if (candidates.length() > 0) {
@@ -3616,13 +3633,15 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             handler.post { callback(null) }
                         }
                     } else {
-                        handler.post { callback(null) }
+                        // Try alternative response format (Gemini sometimes returns via promptFeedback)
+                        val resultText = json.optJSONObject("promptFeedback")?.optString("blockReason")
+                        handler.post { callback("Blocked: ${resultText ?: "No result"}") }
                     }
-                } else {
-                    handler.post { callback(null) }
+                } catch (e: Exception) {
+                    handler.post { callback("") }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("AI_Assist", "Error: ${e.message}", e)
                 handler.post { callback(null) }
             } finally {
                 conn?.disconnect()
@@ -4204,7 +4223,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createOcrLayout(): View {
         pendingGalleryImageHandler = { bitmap ->
-            processImageForOcr(bitmap)
+            resumeOcrModeForGallery(bitmap)
         }
 
         val container = FrameLayout(this).apply {
@@ -4584,50 +4603,92 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
     }
 
+    private fun resumeOcrModeForGallery(bitmap: Bitmap) {
+        if (currentViewMode != ViewMode.OCR) {
+            currentViewMode = ViewMode.OCR
+            updateKeyboardLayout()
+            handler.postDelayed({ processImageForOcr(bitmap) }, 100)
+        } else {
+            processImageForOcr(bitmap)
+        }
+    }
+
     private fun processImageForOcr(bitmap: android.graphics.Bitmap) {
-        val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        val barcodeScanner = BarcodeScanning.getClient()
-        val image = InputImage.fromBitmap(bitmap, 0)
+        Thread {
+            try {
+                // Scale down the bitmap for faster processing
+                val maxDim = 1024f
+                val scale = minOf(maxDim / maxOf(bitmap.width, bitmap.height).toFloat(), 1f)
+                val scaledBitmap = if (scale < 1f) {
+                    android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+                } else bitmap
 
-        textRecognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                val text = visionText.text.trim()
-                if (text.isNotEmpty()) {
-                    handler.post {
-                        ocrTextEdit?.setText(text)
-                        ocrTextEdit?.setSelection(text.length)
-                        ocrStatusLabel?.text = "Text extracted from image"
-                    }
-                    Toast.makeText(this, "Text extracted from image", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "No text found in image", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "OCR failed: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+                val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                val barcodeScanner = BarcodeScanning.getClient()
+                val image = InputImage.fromBitmap(scaledBitmap, 0)
 
-        barcodeScanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                for (barcode in barcodes) {
-                    val rawValue = barcode.rawValue ?: continue
-                    if (rawValue.isNotEmpty()) {
+                textRecognizer.process(image)
+                    .addOnSuccessListener { visionText ->
+                        val text = visionText.text.trim()
                         handler.post {
-                            ocrTextEdit?.setText(rawValue)
-                            ocrTextEdit?.setSelection(rawValue.length)
-                            ocrStatusLabel?.text = "QR code detected: $rawValue"
+                            if (text.isNotEmpty()) {
+                                if (ocrTextEdit != null) {
+                                    ocrTextEdit?.setText(text)
+                                    ocrTextEdit?.setSelection(text.length)
+                                    ocrStatusLabel?.text = "Text extracted (${text.length} chars)"
+                                    ocrStatusLabel?.setTextColor(Color.parseColor("#00D68F"))
+                                } else {
+                                    ocrStatusLabel?.text = "Text: ${text.take(50)}..."
+                                }
+                                Toast.makeText(this@GlideTypeKeyboardService, "Text extracted! (${text.length} chars)", Toast.LENGTH_SHORT).show()
+                            } else {
+                                ocrStatusLabel?.text = "No text found in image"
+                                Toast.makeText(this@GlideTypeKeyboardService, "No text found in image", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                        Toast.makeText(this, "QR code detected: $rawValue", Toast.LENGTH_SHORT).show()
                     }
+                    .addOnFailureListener { e ->
+                        handler.post {
+                            ocrStatusLabel?.text = "OCR failed: ${e.message}"
+                            Toast.makeText(this@GlideTypeKeyboardService, "OCR failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                barcodeScanner.process(image)
+                    .addOnSuccessListener { barcodes ->
+                        for (barcode in barcodes) {
+                            val rawValue = barcode.rawValue ?: continue
+                            if (rawValue.isNotEmpty()) {
+                                handler.post {
+                                    if (ocrTextEdit != null) {
+                                        ocrTextEdit?.setText(rawValue)
+                                        ocrTextEdit?.setSelection(rawValue.length)
+                                        ocrStatusLabel?.text = "QR: $rawValue"
+                                    } else {
+                                        ocrStatusLabel?.text = "QR: $rawValue"
+                                    }
+                                    Toast.makeText(this@GlideTypeKeyboardService, "QR: ${rawValue.take(30)}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+            } catch (e: Exception) {
+                handler.post {
+                    ocrStatusLabel?.text = "Error: ${e.message}"
+                    Toast.makeText(this@GlideTypeKeyboardService, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
+        }.start()
     }
 
     companion object {
         private var pendingGalleryImageHandler: ((Bitmap) -> Unit)? = null
 
         fun handleGalleryImage(bitmap: Bitmap) {
-            pendingGalleryImageHandler?.invoke(bitmap)
+            val handler = pendingGalleryImageHandler
+            if (handler != null) {
+                handler(bitmap)
+            }
         }
     }
 
