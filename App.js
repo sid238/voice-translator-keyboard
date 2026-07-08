@@ -198,6 +198,7 @@ export default function App() {
 
   const [keySpacing, setKeySpacing] = useState(3);
   const [longPressDelay, setLongPressDelay] = useState(300);
+  const [keyFontSize, setKeyFontSize] = useState(0);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
@@ -320,6 +321,8 @@ export default function App() {
           setKeySpacing(spacing);
           const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 300);
           setLongPressDelay(delay);
+          const fs = await FloatingBubble.getIntSetting('key_font_size_sp', 0);
+          setKeyFontSize(fs);
         }
       }
     } catch (e) {
@@ -635,6 +638,27 @@ export default function App() {
                   >
                     <Text style={[appTextStyles.tabSelectorCellText, longPressDelay === item && appTextStyles.tabSelectorCellTextActive]}>
                       {item}ms
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={[styles.spacingSliderGroup, { marginTop: 12 }]}>
+              <Text style={appTextStyles.sliderHeading}>Key Font Size (sp)</Text>
+              <Text style={appTextStyles.sliderDesc}>{keyFontSize === 0 ? 'Default (follows system)' : `Current: ${keyFontSize} sp`}</Text>
+              <View style={appStyles.tabsSelectorRow}>
+                {[0, 12, 14, 16, 18, 20].map((item) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.tabSelectorCell, keyFontSize === item && appStyles.tabSelectorCellActive]}
+                    onPress={() => {
+                      setKeyFontSize(item);
+                      saveIntPref('key_font_size_sp', item);
+                    }}
+                  >
+                    <Text style={[appTextStyles.tabSelectorCellText, keyFontSize === item && appTextStyles.tabSelectorCellTextActive]}>
+                      {item === 0 ? 'Auto' : `${item}`}
                     </Text>
                   </TouchableOpacity>
                 ))}

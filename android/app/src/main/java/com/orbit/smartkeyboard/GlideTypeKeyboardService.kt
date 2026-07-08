@@ -33,8 +33,7 @@ import android.speech.SpeechRecognizer
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.BlurMaskFilter
+
 import java.net.HttpURLConnection
 import java.net.URL
 import java.io.OutputStreamWriter
@@ -86,6 +85,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var suggestionsEnabled = true
     private var keySpacingDp = 3
     private var keyRadiusDp = 16
+    private var keyFontSizeSp = 0 // 0 = follow system default
     private var lastSpacePressTime: Long = 0
     private var adaptiveThemeEnabled = false
     private var lastDetectedApp = ""
@@ -371,6 +371,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
         keySpacingDp = prefs.getInt("key_spacing_dp", 3)
+        keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
@@ -879,7 +880,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         if (isTranslationActive) {
-            mainLayout.addView(createTranslationToolbar())
+            mainLayout.addView(createTranslationPanel())
         } else if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
         } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
@@ -1679,7 +1680,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         } else {
                             if (isLandscape) 16f else 15f
                         }
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, if (keyFontSizeSp > 0) keyFontSizeSp.toFloat() else textSize)
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         gravity = Gravity.CENTER
                         isClickable = false
@@ -3303,23 +3304,35 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         return (dp * density).toInt()
     }
 
-    private fun createTranslationToolbar(): View {
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor(themeToolbarBg))
+    private var translationSourceField: EditText? = null
+    private var translationTargetField: EditText? = null
+
+    private fun createTranslationPanel(): View {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(40)
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(6), 0, dpToPx(6), 0)
         }
 
-        val closeBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
+        // Top nav bar: back + language selectors + switch
+        val navBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(38)
+            )
+        }
+
+        val backBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
             setOnClickListener {
                 vibrateClick()
                 translationInputField = null
@@ -3328,163 +3341,187 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 updateKeyboardLayout()
             }
         }
-        val closeIcon = ImageView(this).apply {
+        val backIcon = ImageView(this).apply {
             setImageResource(R.drawable.ic_close)
             setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
-                gravity = Gravity.CENTER
-            }
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
         }
-        closeBtn.addView(closeIcon)
-        toolbar.addView(closeBtn)
+        backBtn.addView(backIcon)
+        navBar.addView(backBtn)
 
-        val sourceBtn = TextView(this).apply {
+        val sourceLangBtn = TextView(this).apply {
             text = translationSourceLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            background = createKeyDrawableWithRadius(Color.parseColor("#252525"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30)).apply {
-                setMargins(dpToPx(4), 0, 0, 0)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(42), dpToPx(28)).apply {
+                setMargins(dpToPx(6), 0, 0, 0)
             }
             setOnClickListener {
                 vibrateClick()
                 showLanguageMenu(this, true)
             }
         }
-        toolbar.addView(sourceBtn)
+        navBar.addView(sourceLangBtn)
 
-        val arrowText = TextView(this).apply {
-            text = "➔"
-            setTextColor(Color.GRAY)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dpToPx(20), ViewGroup.LayoutParams.WRAP_CONTENT)
+        val switchBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#333333"), dpToPx(keyRadiusDp))
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(28)).apply {
+                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                val temp = translationSourceLang
+                translationSourceLang = translationTargetLang
+                translationTargetLang = temp
+                updateKeyboardLayout()
+            }
         }
-        toolbar.addView(arrowText)
+        val switchIcon = TextView(this).apply {
+            text = "⇄"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+        }
+        switchBtn.addView(switchIcon)
+        navBar.addView(switchBtn)
 
-        val targetBtn = TextView(this).apply {
+        val targetLangBtn = TextView(this).apply {
             text = translationTargetLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            background = createKeyDrawableWithRadius(Color.parseColor("#252525"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30))
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(42), dpToPx(28))
             setOnClickListener {
                 vibrateClick()
                 showLanguageMenu(this, false)
             }
         }
-        toolbar.addView(targetBtn)
+        navBar.addView(targetLangBtn)
 
-        if (isListening) {
-            val waveView = VoiceWaveView(this, themeAccentColor).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    dpToPx(30),
-                    1f
-                ).apply {
-                    gravity = Gravity.CENTER
-                    setMargins(dpToPx(8), 0, dpToPx(8), 0)
-                }
-            }
-            toolbar.addView(waveView)
-        } else {
-            val inputField = EditText(this).apply {
-                translationInputField = this
-                showSoftInputOnFocus = false
-                hint = "Type here..."
-                setHintTextColor(Color.GRAY)
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = null
-                maxLines = 1
-                isSingleLine = true
-                layoutParams = LinearLayout.LayoutParams(
-                    0,
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    1.0f
-                ).apply {
-                    setMargins(dpToPx(8), 0, dpToPx(8), 0)
-                }
-                post {
-                    requestFocus()
-                }
-                setOnTouchListener { v, event ->
-                    v.requestFocus()
-                    false
-                }
-
-                addTextChangedListener(object : android.text.TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                        translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
-                        val query = s?.toString() ?: ""
-                        if (query.isEmpty()) {
-                            currentInputConnection?.setComposingText("", 1)
-                            return
-                        }
-                        translationRunnable = Runnable {
-                            translateText(query, translationSourceLang, translationTargetLang) { result ->
-                                if (result != null) {
-                                    currentInputConnection?.setComposingText(result, 1)
-                                }
-                            }
-                        }
-                        translationDebounceHandler.postDelayed(translationRunnable!!, 400)
-                    }
-                    override fun afterTextChanged(s: android.text.Editable?) {}
-                })
-            }
-            toolbar.addView(inputField)
+        val spacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         }
+        navBar.addView(spacer)
 
-        val voiceTranslateBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(30)).apply {
-                setMargins(0, 0, dpToPx(4), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                if (isListening) {
-                    stopVoiceInput()
-                } else {
-                    startVoiceInput()
-                }
-            }
-        }
-        val voiceTranslateIcon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_mic)
-            setColorFilter(if (isListening) Color.parseColor(themeAccentColor) else Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
-                gravity = Gravity.CENTER
-            }
-        }
-        voiceTranslateBtn.addView(voiceTranslateIcon)
-        toolbar.addView(voiceTranslateBtn)
-
-        val sendBtn = TextView(this).apply {
-            text = "✓"
+        val doneBtn = TextView(this).apply {
+            text = "Done"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply {
-                setMargins(0, 0, dpToPx(4), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(28)).apply {
+                setMargins(dpToPx(4), 0, 0, 0)
             }
             setOnClickListener {
                 vibrateClick()
-                currentInputConnection?.finishComposingText()
+                val sourceText = translationSourceField?.text?.toString() ?: ""
+                if (sourceText.isNotEmpty()) {
+                    currentInputConnection?.commitText(sourceText, 1)
+                }
                 translationInputField = null
                 isTranslationActive = false
                 updateKeyboardLayout()
             }
         }
-        toolbar.addView(sendBtn)
+        navBar.addView(doneBtn)
+        panel.addView(navBar)
 
-        return toolbar
+        // Source input box
+        val sourceBox = FrameLayout(this).apply {
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(42)
+            )
+        }
+        val sourceEdit = EditText(this).apply {
+            translationInputField = this
+            translationSourceField = this
+            showSoftInputOnFocus = false
+            hint = "Type here to translate..."
+            setHintTextColor(Color.parseColor("#66FFFFFF"))
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            maxLines = 2
+            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            post { requestFocus() }
+            setOnTouchListener { v, event -> v.requestFocus(); false }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
+                    val query = s?.toString() ?: ""
+                    if (query.isEmpty()) {
+                        translationTargetField?.setText("")
+                        return
+                    }
+                    translationRunnable = Runnable {
+                        translateText(query, translationSourceLang, translationTargetLang) { result ->
+                            if (result != null) {
+                                translationTargetField?.setText(result)
+                            }
+                        }
+                    }
+                    translationDebounceHandler.postDelayed(translationRunnable!!, 300)
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        sourceBox.addView(sourceEdit)
+        panel.addView(sourceBox)
+
+        // Target output box
+        val targetBox = FrameLayout(this).apply {
+            setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(42)
+            )
+        }
+        val targetEdit = EditText(this).apply {
+            translationTargetField = this
+            isFocusable = false
+            isClickable = true
+            hint = "Translation"
+            setHintTextColor(Color.parseColor("#44FFFFFF"))
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#221A1A2E"), 4)
+            maxLines = 2
+            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setOnClickListener {
+                val text = text?.toString() ?: ""
+                if (text.isNotEmpty()) {
+                    currentInputConnection?.commitText(text, 1)
+                    Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        targetBox.addView(targetEdit)
+        panel.addView(targetBox)
+
+        return panel
     }
 
 
@@ -3610,28 +3647,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     "Make Casual" -> "Rewrite the following text in a casual, friendly tone: $text"
                     else -> text
                 }
-                val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyATBXajvzQLTDHEQbcpq0Ihe0vWDHmO520")
+                val encoded = java.net.URLEncoder.encode(prompt, "UTF-8")
+                val url = URL("https://api-faa.my.id/faa/bard-google?query=$encoded")
                 conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                conn.doInput = true
-
-                val body = org.json.JSONObject().apply {
-                    put("contents", org.json.JSONArray().apply {
-                        put(org.json.JSONObject().apply {
-                            put("parts", org.json.JSONArray().apply {
-                                put(org.json.JSONObject().apply {
-                                    put("text", prompt)
-                                })
-                            })
-                        })
-                    })
-                }
-                conn.outputStream.use { os ->
-                    os.write(body.toString().toByteArray())
-                    os.flush()
-                }
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+                conn.connectTimeout = 15000
+                conn.readTimeout = 15000
 
                 val responseCode = conn.responseCode
                 val response = if (responseCode == 200) {
@@ -3653,23 +3675,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
                 try {
                     val json = org.json.JSONObject(response)
-                    val candidates = json.getJSONArray("candidates")
-                    if (candidates.length() > 0) {
-                        val content = candidates.getJSONObject(0).getJSONObject("content")
-                        val parts = content.getJSONArray("parts")
-                        if (parts.length() > 0) {
-                            val result = parts.getJSONObject(0).getString("text")
-                            handler.post { callback(result) }
-                        } else {
-                            handler.post { callback(null) }
-                        }
-                    } else {
-                        // Try alternative response format (Gemini sometimes returns via promptFeedback)
-                        val resultText = json.optJSONObject("promptFeedback")?.optString("blockReason")
-                        handler.post { callback("Blocked: ${resultText ?: "No result"}") }
-                    }
+                    val result = json.optString("result", json.optString("response", json.toString()))
+                    handler.post { callback(result) }
                 } catch (e: Exception) {
-                    handler.post { callback("") }
+                    // If JSON parsing fails, return raw response
+                    handler.post { callback(response.take(2000)) }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AI_Assist", "Error: ${e.message}", e)
