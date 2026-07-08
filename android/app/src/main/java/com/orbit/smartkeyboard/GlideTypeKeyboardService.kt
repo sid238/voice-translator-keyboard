@@ -3410,10 +3410,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 val msg = chatInput.text.toString().trim()
                 if (msg.isEmpty()) return@setOnClickListener
                 chatInput.setText("")
-                addChatMessage(msgContainer, msg, true)
+                addChatMessage(msgContainer, msg, true, ic)
                 messages.add(true to msg)
 
-                val loadingView = addChatMessage(msgContainer, "Thinking...", false)
+                addChatMessage(msgContainer, "Thinking...", false, ic)
                 scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
 
                 val fullPrompt = if (contextText.isNotEmpty()) "$msg\n\nContext: $contextText" else msg
@@ -3423,7 +3423,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     if (lastChild != null && lastChild is TextView && lastChild.text == "Thinking...") {
                         msgContainer.removeView(lastChild)
                     }
-                    addChatMessage(msgContainer, response, false)
+                    addChatMessage(msgContainer, response, false, ic)
                     messages.add(false to response)
                     scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
                 }
@@ -3503,7 +3503,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
     }
 
-    private fun addChatMessage(container: LinearLayout, text: String, isUser: Boolean): TextView {
+    private fun addChatMessage(container: LinearLayout, text: String, isUser: Boolean, ic: android.view.inputmethod.InputConnection?): TextView {
         val msg = TextView(this).apply {
             this.text = text
             setTextColor(if (isUser) Color.WHITE else Color.parseColor("#CCCCFF"))
