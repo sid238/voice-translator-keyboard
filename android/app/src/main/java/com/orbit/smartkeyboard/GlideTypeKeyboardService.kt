@@ -64,7 +64,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var isCapsLock = false
     private var lastShiftPressTime: Long = 0
     private var translationInputField: EditText? = null
-    private var longPressDelayMs = 400
+    private var longPressDelayMs = 500
     private var keyboardHeightDp = 270 // Default keyboard height
     private var isSizeAdjustActive = false
     private var keyboardWidthPercent = 100
@@ -78,7 +78,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = true
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 6
+    private var keySpacingDp = 7
     private var lastSpacePressTime: Long = 0
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
@@ -356,12 +356,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
-        longPressDelayMs = prefs.getInt("long_press_delay_ms", 300)
+        longPressDelayMs = prefs.getInt("long_press_delay_ms", 500)
 
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
-        keySpacingDp = prefs.getInt("key_spacing_dp", 4)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 7)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
@@ -1883,8 +1883,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             MotionEvent.ACTION_DOWN -> {
                                 vibrateClick()
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                triggerKeyEffect(v, event)
-                                if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                                startPressEffect(v, event)
+                                if (isTranslationActive && translationInputField != null) {
                                     val et = translationInputField!!
                                     val start = et.selectionStart
                                     val end = et.selectionEnd
@@ -1909,7 +1909,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     override fun run() {
                                         vibrateClick()
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                        if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                                        if (isTranslationActive && translationInputField != null) {
                                             val et = translationInputField!!
                                             val start = et.selectionStart
                                             val end = et.selectionEnd
@@ -1939,6 +1939,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 backspaceRunnable?.let { handler.removeCallbacks(it) }
                                 backspaceRunnable = null
                                 v.isPressed = false
+                                endPressEffect()
                             }
                         }
                         true
@@ -1965,7 +1966,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 dragStartY = event.rawY
                                 v.isPressed = true
                                 handler.postDelayed(spaceLongPressRunnableLocal, 1500)
-                                triggerKeyEffect(v, event)
+                                startPressEffect(v, event)
                             }
                             MotionEvent.ACTION_MOVE -> {
                                 val deltaX = event.rawX - dragStartX
@@ -1987,6 +1988,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(spaceLongPressRunnableLocal)
                                 v.isPressed = false
+                                endPressEffect()
                                 if (!spaceLongPressedLocal && !swipeDetected) {
                                     playClick(android.view.KeyEvent.KEYCODE_SPACE)
                                     handleKeyPress(key)
@@ -1996,6 +1998,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             MotionEvent.ACTION_CANCEL -> {
                                 handler.removeCallbacks(spaceLongPressRunnableLocal)
                                 v.isPressed = false
+                                endPressEffect()
                             }
                         }
                         true
@@ -2019,7 +2022,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 v.isPressed = true
                                 showKeyPreview(v, key)
                                 handler.postDelayed(keyLongPressRunnable, longPressDelayMs.toLong())
-                                triggerKeyEffect(v, event)
+                                startPressEffect(v, event)
                             }
                             MotionEvent.ACTION_MOVE -> {
                                 val location = IntArray(2)
@@ -2034,6 +2037,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 handler.removeCallbacks(keyLongPressRunnable)
                                 v.isPressed = false
                                 hideKeyPreview()
+                                endPressEffect()
                                 if (keyLongPressed) {
                                     val hintText = getHintForKey(key)
                                     if (hintText != null) {
@@ -2056,6 +2060,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 handler.removeCallbacks(keyLongPressRunnable)
                                 v.isPressed = false
                                 hideKeyPreview()
+                                endPressEffect()
                             }
                         }
                         true
@@ -2132,7 +2137,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             return
         }
 
-        if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+        if (isTranslationActive && translationInputField != null) {
             val et = translationInputField!!
             val start = et.selectionStart
             val end = et.selectionEnd
@@ -2862,7 +2867,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     MotionEvent.ACTION_DOWN -> {
                         vibrateClick()
                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                        if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                        if (isTranslationActive && translationInputField != null) {
                             val et = translationInputField!!
                             val start = et.selectionStart
                             val end = et.selectionEnd
@@ -2974,7 +2979,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     vibrateClick()
                                     playClick(100)
                                     addRecentEmoji(selectedEmoji)
-                                    if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                                    if (isTranslationActive && translationInputField != null) {
                                         val et = translationInputField!!
                                         val start = et.selectionStart
                                         val end = et.selectionEnd
@@ -2990,7 +2995,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                         override fun run() {
                                             vibrateClick()
                                             playClick(100)
-                                            if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+        if (isTranslationActive && translationInputField != null) {
                                                 val et = translationInputField!!
                                                 val start = et.selectionStart
                                                 val end = et.selectionEnd
@@ -3769,7 +3774,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
-                            if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                            if (isTranslationActive && translationInputField != null) {
                                 val et = translationInputField!!
                                 val start = et.selectionStart
                                 val end = et.selectionEnd
@@ -3786,7 +3791,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
-                            if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+                            if (isTranslationActive && translationInputField != null) {
                                 val et = translationInputField!!
                                 val start = et.selectionStart
                                 val end = et.selectionEnd
@@ -4052,7 +4057,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             return
         }
         if (!isPcKeyWorkable(key)) return
-        if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
+        if (isTranslationActive && translationInputField != null) {
             val et = translationInputField!!
             val start = et.selectionStart
             val end = et.selectionEnd
@@ -4223,6 +4228,22 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         keyboardEffectsView?.triggerEffect(relativeX, relativeY, v.width, v.height)
     }
 
+    private fun startPressEffect(v: View, event: MotionEvent) {
+        if (keyboardEffect == "none" || keyboardEffectsView == null) return
+        val area = activeKeyboardArea ?: return
+        val location = IntArray(2)
+        v.getLocationOnScreen(location)
+        val keyboardAreaLoc = IntArray(2)
+        area.getLocationOnScreen(keyboardAreaLoc)
+        val relativeX = location[0] - keyboardAreaLoc[0] + event.x
+        val relativeY = location[1] - keyboardAreaLoc[1] + event.y
+        keyboardEffectsView?.setPressed(relativeX, relativeY, v.width, v.height)
+    }
+
+    private fun endPressEffect() {
+        keyboardEffectsView?.setReleased()
+    }
+
     private fun toggleOcrMode() {
         if (currentViewMode == ViewMode.OCR) {
             stopOcrCamera()
@@ -4265,15 +4286,15 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setBackgroundColor(Color.parseColor("#CC000000"))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(110)
+                dpToPx(180)
             ).apply {
                 gravity = Gravity.BOTTOM
             }
-            setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+            setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(8))
         }
 
         val scanTextLabel = TextView(this).apply {
-            text = "Camera OCR Active. Point at text or QR code..."
+            text = "Point camera at text or QR code, then tap Capture"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
@@ -4299,6 +4320,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         overlay.addView(qrResultLabel)
 
+        overlay.addView(createOcrTextEdit())
+
         val buttonsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -4306,7 +4329,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, dpToPx(6), 0, 0)
+                setMargins(0, dpToPx(4), 0, 0)
             }
         }
 
@@ -4316,10 +4339,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             background = createKeyDrawable(Color.parseColor("#4F8CFF"), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(80),
+                dpToPx(65),
                 dpToPx(30)
             ).apply {
-                setMargins(0, 0, dpToPx(8), 0)
+                setMargins(0, 0, dpToPx(4), 0)
             }
             setOnClickListener {
                 vibrateClick()
@@ -4328,45 +4351,67 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         buttonsRow.addView(galleryBtn)
 
-        val doneBtn = Button(this).apply {
-            text = "Insert & Done"
+        val captureBtn = Button(this).apply {
+            text = "Capture"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            background = createKeyDrawable(Color.parseColor("#FF6B00"), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(65),
+                dpToPx(30)
+            ).apply {
+                setMargins(0, 0, dpToPx(4), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                ocrCaptureMode = !ocrCaptureMode
+                if (ocrCaptureMode) {
+                    (it as? Button)?.text = "Live"
+                    ocrStatusLabel?.text = "Captured. Press Live to resume scanning"
+                } else {
+                    (it as? Button)?.text = "Capture"
+                    lastScanTimestamp = 0L
+                    ocrStatusLabel?.text = "Live scanning..."
+                }
+            }
+        }
+        buttonsRow.addView(captureBtn)
+
+        val insertBtn = Button(this).apply {
+            text = "Insert"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(100),
+                dpToPx(65),
                 dpToPx(30)
             ).apply {
-                setMargins(0, 0, dpToPx(8), 0)
+                setMargins(0, 0, dpToPx(4), 0)
             }
             setOnClickListener {
                 vibrateClick()
                 commitOcrText()
+            }
+        }
+        buttonsRow.addView(insertBtn)
+
+        val doneBtn = Button(this).apply {
+            text = "Done"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(60),
+                dpToPx(30)
+            )
+            setOnClickListener {
+                vibrateClick()
                 stopOcrCamera()
                 currentViewMode = ViewMode.QWERTY
                 updateKeyboardLayout()
             }
         }
         buttonsRow.addView(doneBtn)
-
-        val cancelBtn = Button(this).apply {
-            text = "Cancel"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
-            layoutParams = LinearLayout.LayoutParams(
-                dpToPx(70),
-                dpToPx(30)
-            )
-            setOnClickListener {
-                vibrateClick()
-                currentInputConnection?.setComposingText("", 1)
-                stopOcrCamera()
-                currentViewMode = ViewMode.QWERTY
-                updateKeyboardLayout()
-            }
-        }
-        buttonsRow.addView(cancelBtn)
         overlay.addView(buttonsRow)
 
         container.addView(overlay)
@@ -4406,6 +4451,29 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private var qrDetectedText = ""
     private var ocrStatusLabel: TextView? = null
+    private var ocrTextEdit: EditText? = null
+    private var ocrCaptureMode = false
+    private var lastScanTimestamp = 0L
+    private val ocrScanDebounceMs = 1500L
+
+    private fun createOcrTextEdit(): EditText {
+        return EditText(this).apply {
+            ocrTextEdit = this
+            hint = "Extracted text will appear here..."
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
+            maxLines = 3
+            isSingleLine = false
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(50)
+            ).apply {
+                setMargins(0, dpToPx(4), 0, dpToPx(4))
+            }
+        }
+    }
 
     private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView, qrLabel: TextView) {
         ocrStatusLabel = statusLabel
@@ -4436,17 +4504,23 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     val mediaImage = imageProxy.image
                     if (mediaImage != null) {
                         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                        textRecognizer.process(image)
-                            .addOnSuccessListener { visionText ->
-                                val text = visionText.text.trim()
-                                if (text.isNotEmpty() && text != lastScannedText) {
-                                    lastScannedText = text
-                                    handler.post {
-                                        statusLabel.text = "Scanned: " + if (text.length > 30) text.take(27) + "..." else text
-                                        currentInputConnection?.setComposingText(text, 1)
+
+                        if (!ocrCaptureMode) {
+                            val now = System.currentTimeMillis()
+                            textRecognizer.process(image)
+                                .addOnSuccessListener { visionText ->
+                                    val text = visionText.text.trim()
+                                    if (text.isNotEmpty() && now - lastScanTimestamp > ocrScanDebounceMs) {
+                                        lastScanTimestamp = now
+                                        handler.post {
+                                            statusLabel.text = "Scanned: " + if (text.length > 30) text.take(27) + "..." else text
+                                            ocrTextEdit?.setText(text)
+                                            ocrTextEdit?.setSelection(text.length)
+                                        }
                                     }
                                 }
-                            }
+                        }
+
                         barcodeScanner.process(image)
                             .addOnSuccessListener { barcodes ->
                                 for (barcode in barcodes) {
@@ -4468,8 +4542,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                         }
                                         handler.post {
                                             qrLabel.text = "QR: $typeName - $rawValue"
-                                            lastScannedText = rawValue
-                                            currentInputConnection?.setComposingText(rawValue, 1)
+                                            ocrTextEdit?.setText(rawValue)
+                                            ocrTextEdit?.setSelection(rawValue.length)
                                         }
                                     }
                                 }
@@ -4520,8 +4594,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             .addOnSuccessListener { visionText ->
                 val text = visionText.text.trim()
                 if (text.isNotEmpty()) {
-                    lastScannedText = text
-                    currentInputConnection?.setComposingText(text, 1)
+                    handler.post {
+                        ocrTextEdit?.setText(text)
+                        ocrTextEdit?.setSelection(text.length)
+                        ocrStatusLabel?.text = "Text extracted from image"
+                    }
                     Toast.makeText(this, "Text extracted from image", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "No text found in image", Toast.LENGTH_SHORT).show()
@@ -4536,8 +4613,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 for (barcode in barcodes) {
                     val rawValue = barcode.rawValue ?: continue
                     if (rawValue.isNotEmpty()) {
-                        lastScannedText = rawValue
-                        currentInputConnection?.setComposingText(rawValue, 1)
+                        handler.post {
+                            ocrTextEdit?.setText(rawValue)
+                            ocrTextEdit?.setSelection(rawValue.length)
+                            ocrStatusLabel?.text = "QR code detected: $rawValue"
+                        }
                         Toast.makeText(this, "QR code detected: $rawValue", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -4557,11 +4637,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun commitOcrText() {
-        currentInputConnection?.let { ic ->
-            if (lastScannedText.isNotEmpty()) {
-                ic.commitText(lastScannedText, 1)
-                lastScannedText = ""
-            }
+        val text = ocrTextEdit?.text?.toString() ?: return
+        if (text.isNotEmpty()) {
+            currentInputConnection?.commitText(text, 1)
+            ocrTextEdit?.setText("")
+        } else {
+            Toast.makeText(this, "No text to insert", Toast.LENGTH_SHORT).show()
         }
     }
 }

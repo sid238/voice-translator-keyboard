@@ -21,7 +21,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
-    // Effect states
     private val fireParticles = mutableListOf<FireParticle>()
     private val ripples = mutableListOf<WaterRipple>()
     private val matrixStreams = mutableListOf<MatrixStream>()
@@ -30,7 +29,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private val trailPoints = mutableListOf<TrailPoint>()
     private val rgbGlows = mutableListOf<RgbGlow>()
 
-    // For Neon Trail
     private val trailPath = Path()
     private val trailPaint = Paint().apply {
         isAntiAlias = true
@@ -42,17 +40,22 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private var lastX = 0f
     private var lastY = 0f
 
-    // RGB Glow angle/color state
     private var rgbHue = 0f
 
+    // Press state for continuous effects
+    private var pressX = 0f
+    private var pressY = 0f
+    private var pressWidth = 0
+    private var pressHeight = 0
+    private var isPressed = false
+    private var pressEffectActive = false
+
     init {
-        // Transparent touch
         isClickable = false
         isFocusable = false
     }
 
     override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
-        // Pass touches through to keyboard keys below
         return false
     }
 
@@ -71,10 +74,25 @@ class KeyboardEffectsView @JvmOverloads constructor(
         trailPoints.clear()
         rgbGlows.clear()
         trailPath.reset()
+        isPressed = false
+        pressEffectActive = false
+    }
+
+    fun setPressed(x: Float, y: Float, width: Int, height: Int) {
+        pressX = x
+        pressY = y
+        pressWidth = width
+        pressHeight = height
+        isPressed = true
+        pressEffectActive = true
+        triggerEffect(x, y, width, height)
+    }
+
+    fun setReleased() {
+        isPressed = false
     }
 
     fun triggerEffect(x: Float, y: Float, width: Int, height: Int) {
-        // Clear previous effects on each new touch
         when (effectType) {
             "fire" -> { fireParticles.clear(); spawnFire(x, y) }
             "water_ripple" -> { ripples.clear(); spawnRipple(x, y) }
@@ -98,7 +116,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private class TrailPoint(val x: Float, val y: Float, val timestamp: Long)
 
     private fun spawnNeonTap(x: Float, y: Float) {
-        // Spawn sparks for tapping on Neon Trail
         for (i in 0..8) {
             val angle = random.nextFloat() * 2 * Math.PI.toFloat()
             val speed = 3f + random.nextFloat() * 6f
@@ -129,13 +146,11 @@ class KeyboardEffectsView @JvmOverloads constructor(
     )
 
     private fun spawnFire(x: Float, y: Float) {
-        // Spawn fire particles rising from touch point
         for (i in 0..22) {
             val vx = -4f + random.nextFloat() * 8f
             val vy = -3f - random.nextFloat() * 6f
             val size = 10f + random.nextFloat() * 16f
             val life = 600f + random.nextFloat() * 400f
-            // Fire colors: Yellow, Orange, Red
             val colors = arrayOf("#FFD700", "#FF8C00", "#FF4500", "#FF0000")
             val colorStr = colors[random.nextInt(colors.size)]
             val color = Color.parseColor(colorStr)
@@ -155,7 +170,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
     )
 
     private fun spawnRipple(x: Float, y: Float) {
-        val color = Color.argb(180, 79, 140, 255) // Semi-transparent blue
+        val color = Color.argb(180, 79, 140, 255)
         ripples.add(WaterRipple(x, y, 0f, 220f, color, 800f, 0f))
     }
 
@@ -170,7 +185,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     )
 
     private fun spawnMatrix(x: Float, y: Float, keyWidth: Int, keyHeight: Int) {
-        // Spawn 3 falling streams starting around the key
         val matrixChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ"
         for (i in 0..2) {
             val streamX = (x - keyWidth / 2) + random.nextFloat() * keyWidth
@@ -201,7 +215,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val angle = random.nextFloat() * 2 * Math.PI.toFloat()
             val speed = 2f + random.nextFloat() * 6f
             val life = 800 + random.nextInt(400)
-            // Galaxy colors: Neon Cyan, Violet, Pink, White
             val colors = arrayOf("#00FFFF", "#8A2BE2", "#FF007F", "#FFFFFF")
             val color = Color.parseColor(colors[random.nextInt(colors.size)])
             val size = 5f + random.nextFloat() * 7f
@@ -241,8 +254,59 @@ class KeyboardEffectsView @JvmOverloads constructor(
         super.onDraw(canvas)
         var needsRedraw = false
 
-        // Update hue for continuous RGB animations
         rgbHue = (rgbHue + 2f) % 360f
+
+        // Handle pressed state: keep effects alive while pressed
+        if (isPressed && pressEffectActive) {
+            val now = System.currentTimeMillis()
+
+            when (effectType) {
+                "fire" -> {
+                    // Keep spawning fire particles while pressed
+                    if (fireParticles.size < 30) {
+                        spawnFire(pressX, pressY)
+                    }
+                }
+                "water_ripple" -> {
+                    // Keep ripple alive while pressed - reset progress
+                    if (ripples.isNotEmpty()) {
+                        val r = ripples[0]
+                        r.progress = 0f
+                        r.radius = 0f
+                    }
+                }
+                "matrix_rain" -> {
+                    // Keep respawning matrix streams while pressed
+                    if (matrixStreams.isEmpty() || matrixStreams.all { it.alpha <= 50 }) {
+                        spawnMatrix(pressX, pressY, pressWidth, pressHeight)
+                    }
+                }
+                "galaxy" -> {
+                    // Keep spawning galaxy particles while pressed
+                    if (galaxyParticles.size < 40) {
+                        spawnGalaxy(pressX, pressY)
+                    }
+                }
+                "mechanical_flash" -> {
+                    // Keep flash alive while pressed
+                    if (mechanicalFlashes.isNotEmpty()) {
+                        mechanicalFlashes[0].alpha = 255
+                    } else {
+                        spawnMechanicalFlash(pressX, pressY, pressWidth, pressHeight)
+                    }
+                }
+                "rgb_glow" -> {
+                    // Keep glow bright while pressed
+                    if (rgbGlows.isNotEmpty()) {
+                        val g = rgbGlows[0]
+                        g.alpha = 255
+                        g.scale = 1.0f
+                    } else {
+                        spawnRgbGlow(pressX, pressY, pressWidth, pressHeight)
+                    }
+                }
+            }
+        }
 
         val now = System.currentTimeMillis()
 
@@ -264,17 +328,14 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     val p2 = trailPoints[i + 1]
                     val age = now - p2.timestamp
                     val alpha = ((1f - age.toFloat() / 450f).coerceIn(0f, 1f) * 255).toInt()
-                    
-                    // Rainbow glow for neon trail!
+
                     val segmentHue = (rgbHue + i * 15f) % 360f
                     trailPaint.color = Color.HSVToColor(alpha, floatArrayOf(segmentHue, 1f, 1f))
                     trailPaint.strokeWidth = 14f * (1f - age.toFloat() / 450f).coerceIn(0.2f, 1f)
-                    
-                    // Simple glow layer
+
                     trailPaint.maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.NORMAL)
                     canvas.drawLine(p1.x, p1.y, p2.x, p2.y, trailPaint)
-                    
-                    // Bright core layer
+
                     trailPaint.maskFilter = null
                     trailPaint.color = Color.argb(alpha, 255, 255, 255)
                     trailPaint.strokeWidth = 4f
@@ -295,17 +356,15 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     continue
                 }
 
-                // Update position
                 p.x += p.vx
                 p.y += p.vy
-                p.size *= 0.95f // Shrink
+                p.size *= 0.95f
 
                 val ratio = p.life / p.maxLife
                 val alpha = (ratio * 255).toInt().coerceIn(0, 255)
                 paint.color = p.color
                 paint.alpha = alpha
 
-                // Fire glow effect using small blur
                 paint.maskFilter = BlurMaskFilter(6f, BlurMaskFilter.Blur.NORMAL)
                 canvas.drawCircle(p.x, p.y, p.size, paint)
                 paint.maskFilter = null
@@ -334,7 +393,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 paint.alpha = alpha
                 canvas.drawCircle(r.x, r.y, r.radius, paint)
 
-                // Draw secondary smaller ripple
                 if (ratio > 0.3f) {
                     val ratio2 = (r.progress - r.duration * 0.3f) / (r.duration * 0.7f)
                     val r2 = r.maxRadius * 0.7f * ratio2
@@ -365,22 +423,18 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 paint.typeface = Typeface.MONOSPACE
                 paint.style = Paint.Style.FILL
 
-                // Draw falling character chain
                 for (j in 0 until s.chars.size) {
                     val charY = s.y - (j * 32f)
                     if (charY < 0) continue
 
                     val itemAlpha = (s.alpha * (1f - j.toFloat() / s.chars.size)).toInt().coerceIn(0, 255)
                     if (j == 0) {
-                        // The head char is bright white-green
                         paint.color = Color.rgb(180, 255, 180)
                     } else {
-                        // Trailing chars are matrix green
                         paint.color = Color.rgb(0, 255, 70)
                     }
                     paint.alpha = itemAlpha
-                    
-                    // Periodically flicker active chars
+
                     val displayChar = if (random.nextFloat() > 0.95f) {
                         s.chars[random.nextInt(s.chars.size)]
                     } else {
@@ -390,7 +444,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     canvas.drawText(displayChar, s.x, charY, paint)
                 }
             }
-            // Update active char frame rotation
             if (random.nextFloat() > 0.5f) {
                 for (s in matrixStreams) {
                     s.activeCharIndex = (s.activeCharIndex + 1) % s.chars.size
@@ -411,8 +464,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 }
 
                 val ratio = age.toFloat() / p.duration.toFloat()
-                
-                // Add spiral spiral effect
+
                 val spiralAngle = ratio * 3f
                 val rotX = p.vx * cos(spiralAngle) - p.vy * sin(spiralAngle)
                 val rotY = p.vx * sin(spiralAngle) + p.vy * cos(spiralAngle)
@@ -437,13 +489,14 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val iterator = mechanicalFlashes.iterator()
             while (iterator.hasNext()) {
                 val f = iterator.next()
-                f.alpha -= 4
+                if (!isPressed) {
+                    f.alpha -= 4
+                }
                 if (f.alpha <= 0) {
                     iterator.remove()
                     continue
                 }
 
-                // Expanding white radial light centered on the key
                 val radius = (1f - f.alpha / 255f) * f.keyWidth * 1.5f
                 val radialGradient = RadialGradient(
                     f.x, f.y, radius,
@@ -462,14 +515,15 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val iterator = rgbGlows.iterator()
             while (iterator.hasNext()) {
                 val g = iterator.next()
-                g.scale += 0.03f
-                g.alpha -= 4
+                if (!isPressed) {
+                    g.scale += 0.03f
+                    g.alpha -= 4
+                }
                 if (g.alpha <= 0) {
                     iterator.remove()
                     continue
                 }
 
-                // Cycling rainbow color glow borders
                 val glowHue = (rgbHue + g.alpha / 5f) % 360f
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 6f
@@ -491,8 +545,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             }
         }
 
-        // Request next frame if animations are running
-        if (needsRedraw) {
+        if (needsRedraw || isPressed) {
             postInvalidateOnAnimation()
         }
     }

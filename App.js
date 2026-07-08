@@ -227,6 +227,7 @@ export default function App() {
   const [emojiScale, setEmojiScale] = useState('medium');
   const [addonVoiceText, setAddonVoiceText] = useState(true);
   const [addonTranslate, setAddonTranslate] = useState(true);
+  const [appTheme, setAppTheme] = useState('dark');
 
   useEffect(() => {
     checkKeyboardStatus();
@@ -290,6 +291,8 @@ export default function App() {
           setEmojiScale(escale);
           const effect = await FloatingBubble.getStringSetting('keyboard_effect', 'none');
           setKeyboardEffect(effect);
+          const appThemeVal = await FloatingBubble.getStringSetting('app_theme', 'dark');
+          setAppTheme(appThemeVal);
         }
         if (FloatingBubble.getBooleanSetting) {
           const sound = await FloatingBubble.getBooleanSetting('sound_enabled', false);
@@ -375,7 +378,7 @@ export default function App() {
     }
   };
 
-  const palette = {
+  const darkPalette = {
     background: '#000000',
     surface: '#0D0D0D',
     surfaceSecondary: '#1A1A1A',
@@ -387,7 +390,47 @@ export default function App() {
     subtext: '#8E8E93',
     border: '#1C1C1E',
     glass: 'rgba(255,255,255,0.04)',
+    cardBg: '#0D0D0D',
+    cardBorder: '#1C1C1E',
+    inputBg: '#000000',
+    inputText: '#FFFFFF',
+    switchTrack: '#2C2C2C',
+    iconWrapperBg: '#1A1A1A',
+    heroBg: '#0D0D0D',
+    heroBorder: '#1C1C1E',
+    navBg: 'rgba(13, 13, 13, 0.88)',
+    navBorder: 'rgba(255,255,255,0.08)',
+    statusBarStyle: 'light-content',
+    statusBarBg: '#000000',
   };
+
+  const lightPalette = {
+    background: '#F2F2F7',
+    surface: '#FFFFFF',
+    surfaceSecondary: '#E5E5EA',
+    emerald: '#00D68F',
+    blue: '#007AFF',
+    orange: '#FF9500',
+    red: '#FF3B30',
+    text: '#000000',
+    subtext: '#6C6C70',
+    border: '#D1D1D6',
+    glass: 'rgba(0,0,0,0.04)',
+    cardBg: '#FFFFFF',
+    cardBorder: '#D1D1D6',
+    inputBg: '#FFFFFF',
+    inputText: '#000000',
+    switchTrack: '#E5E5EA',
+    iconWrapperBg: '#E5E5EA',
+    heroBg: '#FFFFFF',
+    heroBorder: '#D1D1D6',
+    navBg: 'rgba(255, 255, 255, 0.92)',
+    navBorder: 'rgba(0,0,0,0.08)',
+    statusBarStyle: 'dark-content',
+    statusBarBg: '#F2F2F7',
+  };
+
+  const palette = appTheme === 'light' ? lightPalette : darkPalette;
 
   const renderSectionDetails = () => {
     let title = '';
@@ -429,7 +472,7 @@ export default function App() {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Icon name="globe" size={20} color={isSelected ? palette.emerald : palette.subtext} />
-                    <Text style={[styles.settingItemTitle, isSelected && { color: palette.emerald }]}>
+                    <Text style={[appTextStyles.settingItemTitle, isSelected && { color: palette.emerald }]}>
                       {lang.name}
                     </Text>
                   </View>
@@ -468,15 +511,15 @@ export default function App() {
                     saveStringPref('theme', t.id);
                   }}
                 >
-                  <Text style={styles.themeCardName}>{t.name}</Text>
+                  <Text style={appTextStyles.themeCardName}>{t.name}</Text>
                   <View style={[styles.themePill, { backgroundColor: t.color }]} />
                 </TouchableOpacity>
               ))}
             </View>
 
             <View style={styles.wallpaperContainer}>
-              <Text style={styles.wallpaperTitle}>Custom Wallpaper background</Text>
-              <Text style={styles.wallpaperSubtitle}>Set your own background image/photo for the keyboard keys overlay.</Text>
+              <Text style={appTextStyles.wallpaperTitle}>Custom Wallpaper background</Text>
+              <Text style={appTextStyles.wallpaperSubtitle}>Set your own background image/photo for the keyboard keys overlay.</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <TouchableOpacity
                   style={[styles.wallpaperBtn, { backgroundColor: palette.emerald }]}
@@ -493,7 +536,7 @@ export default function App() {
                     }
                   }}
                 >
-                  <Text style={styles.wallpaperBtnText}>Choose Photo</Text>
+                  <Text style={appTextStyles.wallpaperBtnText}>Choose Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.wallpaperBtn, { backgroundColor: 'rgba(255,92,92,0.1)', borderWidth: 1, borderColor: palette.red }]}
@@ -521,10 +564,10 @@ export default function App() {
         desc = 'Customize structural heights, vibration strengths, keyspacing, and delays.';
         content = (
           <View>
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Hinted Number Row</Text>
-                <Text style={styles.settingItemSubtitle}>Always display number row above layouts</Text>
+                <Text style={appTextStyles.settingItemTitle}>Hinted Number Row</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Always display number row above layouts</Text>
               </View>
               <Switch
                 value={numberRowEnabled}
@@ -537,10 +580,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Keypress Sound Feedback</Text>
-                <Text style={styles.settingItemSubtitle}>Audio clicks on tapping keys</Text>
+                <Text style={appTextStyles.settingItemTitle}>Keypress Sound Feedback</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Audio clicks on tapping keys</Text>
               </View>
               <Switch
                 value={soundEnabled}
@@ -553,10 +596,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Keypress Haptic Vibration</Text>
-                <Text style={styles.settingItemSubtitle}>Tactile feedback response on presses</Text>
+                <Text style={appTextStyles.settingItemTitle}>Keypress Haptic Vibration</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Tactile feedback response on presses</Text>
               </View>
               <Switch
                 value={vibeEnabled}
@@ -570,19 +613,19 @@ export default function App() {
             </View>
 
             <View style={styles.spacingSliderGroup}>
-              <Text style={styles.sliderHeading}>Key Spacing (dp)</Text>
-              <Text style={styles.sliderDesc}>Current spacing: {keySpacing} dp</Text>
-              <View style={styles.tabsSelectorRow}>
+              <Text style={appTextStyles.sliderHeading}>Key Spacing (dp)</Text>
+              <Text style={appTextStyles.sliderDesc}>Current spacing: {keySpacing} dp</Text>
+              <View style={appStyles.tabsSelectorRow}>
                 {[2, 4, 6, 8, 10].map((item) => (
                   <TouchableOpacity
                     key={item}
-                    style={[styles.tabSelectorCell, keySpacing === item && styles.tabSelectorCellActive]}
+                    style={[styles.tabSelectorCell, keySpacing === item && appStyles.tabSelectorCellActive]}
                     onPress={() => {
                       setKeySpacing(item);
                       saveIntPref('key_spacing_dp', item);
                     }}
                   >
-                    <Text style={[styles.tabSelectorCellText, keySpacing === item && styles.tabSelectorCellTextActive]}>
+                    <Text style={[appTextStyles.tabSelectorCellText, keySpacing === item && appTextStyles.tabSelectorCellTextActive]}>
                       {item}dp
                     </Text>
                   </TouchableOpacity>
@@ -591,19 +634,19 @@ export default function App() {
             </View>
 
             <View style={[styles.spacingSliderGroup, { marginTop: 12 }]}>
-              <Text style={styles.sliderHeading}>Long Press Delay (ms)</Text>
-              <Text style={styles.sliderDesc}>Current delay: {longPressDelay} ms</Text>
-              <View style={styles.tabsSelectorRow}>
+              <Text style={appTextStyles.sliderHeading}>Long Press Delay (ms)</Text>
+              <Text style={appTextStyles.sliderDesc}>Current delay: {longPressDelay} ms</Text>
+              <View style={appStyles.tabsSelectorRow}>
                 {[200, 300, 400, 500, 600].map((item) => (
                   <TouchableOpacity
                     key={item}
-                    style={[styles.tabSelectorCell, longPressDelay === item && styles.tabSelectorCellActive]}
+                    style={[styles.tabSelectorCell, longPressDelay === item && appStyles.tabSelectorCellActive]}
                     onPress={() => {
                       setLongPressDelay(item);
                       saveIntPref('long_press_delay_ms', item);
                     }}
                   >
-                    <Text style={[styles.tabSelectorCellText, longPressDelay === item && styles.tabSelectorCellTextActive]}>
+                    <Text style={[appTextStyles.tabSelectorCellText, longPressDelay === item && appTextStyles.tabSelectorCellTextActive]}>
                       {item}ms
                     </Text>
                   </TouchableOpacity>
@@ -612,8 +655,8 @@ export default function App() {
             </View>
 
             <View style={[styles.spacingSliderGroup, { marginTop: 12 }]}>
-              <Text style={styles.sliderHeading}>Keyboard Typing Effect</Text>
-              <Text style={styles.sliderDesc}>Select live particle/glow animation when keys are pressed.</Text>
+              <Text style={appTextStyles.sliderHeading}>Keyboard Typing Effect</Text>
+              <Text style={appTextStyles.sliderDesc}>Select live particle/glow animation when keys are pressed.</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8 }}>
                 {[
                   { id: 'none', label: 'None' },
@@ -627,13 +670,13 @@ export default function App() {
                 ].map((item) => (
                   <TouchableOpacity
                     key={item.id}
-                    style={[styles.tabSelectorCell, keyboardEffect === item.id && styles.tabSelectorCellActive, { marginRight: 8, paddingHorizontal: 12 }]}
+                    style={[styles.tabSelectorCell, keyboardEffect === item.id && appStyles.tabSelectorCellActive, { marginRight: 8, paddingHorizontal: 12 }]}
                     onPress={() => {
                       setKeyboardEffect(item.id);
                       saveStringPref('keyboard_effect', item.id);
                     }}
                   >
-                    <Text style={[styles.tabSelectorCellText, keyboardEffect === item.id && styles.tabSelectorCellTextActive]}>
+                    <Text style={[appTextStyles.tabSelectorCellText, keyboardEffect === item.id && appTextStyles.tabSelectorCellTextActive]}>
                       {item.label}
                     </Text>
                   </TouchableOpacity>
@@ -649,10 +692,10 @@ export default function App() {
         desc = 'Adjust auto-corrections, spacebar actions, capitalization, and dictionary mappings.';
         content = (
           <View>
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Auto Capitalization</Text>
-                <Text style={styles.settingItemSubtitle}>Capitalize first letter of sentences/words</Text>
+                <Text style={appTextStyles.settingItemTitle}>Auto Capitalization</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Capitalize first letter of sentences/words</Text>
               </View>
               <Switch
                 value={autoCap}
@@ -665,10 +708,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Double-Space Period (".")</Text>
-                <Text style={styles.settingItemSubtitle}>Double tap spacebar to insert period & space</Text>
+                <Text style={appTextStyles.settingItemTitle}>Double-Space Period (".")</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Double tap spacebar to insert period & space</Text>
               </View>
               <Switch
                 value={doubleSpacePeriod}
@@ -681,10 +724,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Smart Bar suggestions</Text>
-                <Text style={styles.settingItemSubtitle}>Show dictionary predictions bar</Text>
+                <Text style={appTextStyles.settingItemTitle}>Smart Bar suggestions</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Show dictionary predictions bar</Text>
               </View>
               <Switch
                 value={suggestionsEnabled}
@@ -697,10 +740,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Auto Correction</Text>
-                <Text style={styles.settingItemSubtitle}>Replace mistyped words automatically</Text>
+                <Text style={appTextStyles.settingItemTitle}>Auto Correction</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Replace mistyped words automatically</Text>
               </View>
               <Switch
                 value={autoCorrectEnabled}
@@ -721,10 +764,10 @@ export default function App() {
         desc = 'Slide your finger over letters to write seamlessly without raising the hand.';
         content = (
           <View>
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Enable Glide Typing</Text>
-                <Text style={styles.settingItemSubtitle}>Type by sliding over letter paths</Text>
+                <Text style={appTextStyles.settingItemTitle}>Enable Glide Typing</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Type by sliding over letter paths</Text>
               </View>
               <Switch
                 value={gestureEnabled}
@@ -745,42 +788,42 @@ export default function App() {
         desc = 'Configure copied item retention limits and prevent history loss.';
         content = (
           <View>
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Copied History Limit</Text>
-                <Text style={styles.settingItemSubtitle}>Wipe older items when limit is exceeded</Text>
+                <Text style={appTextStyles.settingItemTitle}>Copied History Limit</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Wipe older items when limit is exceeded</Text>
               </View>
               <View style={styles.quantityWidget}>
                 <TouchableOpacity onPress={() => {
                   const n = Math.max(50, clipboardLimit - 50);
                   setClipboardLimit(n);
                   saveIntPref('clipboard_limit', n);
-                }} style={styles.quantityBtn}>
-                  <Text style={styles.quantityBtnText}>-</Text>
+                }} style={appStyles.quantityBtn}>
+                  <Text style={appTextStyles.quantityBtnText}>-</Text>
                 </TouchableOpacity>
-                <Text style={styles.quantityValue}>{clipboardLimit}</Text>
+                <Text style={appTextStyles.quantityValue}>{clipboardLimit}</Text>
                 <TouchableOpacity onPress={() => {
                   const n = Math.min(250, clipboardLimit + 50);
                   setClipboardLimit(n);
                   saveIntPref('clipboard_limit', n);
-                }} style={styles.quantityBtn}>
-                  <Text style={styles.quantityBtnText}>+</Text>
+                }} style={appStyles.quantityBtn}>
+                  <Text style={appTextStyles.quantityBtnText}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Max Pins Limit</Text>
-                <Text style={styles.settingItemSubtitle}>Maximum number of sticky pinned items</Text>
+                <Text style={appTextStyles.settingItemTitle}>Max Pins Limit</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Maximum number of sticky pinned items</Text>
               </View>
-              <Text style={styles.badgeTextGreen}>{pinLimit} Items</Text>
+              <Text style={appTextStyles.badgeTextGreen}>{pinLimit} Items</Text>
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Clipboard Timeline Mode</Text>
-                <Text style={styles.settingItemSubtitle}>Connect copied items with a chronological vertical timeline thread</Text>
+                <Text style={appTextStyles.settingItemTitle}>Clipboard Timeline Mode</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Connect copied items with a chronological vertical timeline thread</Text>
               </View>
               <Switch
                 value={clipboardTimelineEnabled}
@@ -801,10 +844,10 @@ export default function App() {
         desc = 'Integrate third-party services like voice dictation translators and offline speech engines.';
         content = (
           <View>
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Voice Dictation Engine</Text>
-                <Text style={styles.settingItemSubtitle}>Convert spoken words to text on the fly</Text>
+                <Text style={appTextStyles.settingItemTitle}>Voice Dictation Engine</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Convert spoken words to text on the fly</Text>
               </View>
               <Switch
                 value={addonVoiceText}
@@ -817,10 +860,10 @@ export default function App() {
               />
             </View>
 
-            <View style={styles.settingSwitchRow}>
+            <View style={appStyles.settingSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.settingItemTitle}>Google Translate Integration</Text>
-                <Text style={styles.settingItemSubtitle}>Translate inputs in real-time instantly</Text>
+                <Text style={appTextStyles.settingItemTitle}>Google Translate Integration</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Translate inputs in real-time instantly</Text>
               </View>
               <Switch
                 value={addonTranslate}
@@ -841,13 +884,29 @@ export default function App() {
         desc = 'Manage backups, clear profiles, configuration resets, and developer items.';
         content = (
           <View>
+            <View style={[appStyles.settingSwitchRow, { borderBottomColor: palette.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[appTextStyles.settingItemTitle, { color: palette.text }]}>Dark Mode</Text>
+                <Text style={[appTextStyles.settingItemSubtitle, { color: palette.subtext }]}>Toggle app theme between dark and light</Text>
+              </View>
+              <Switch
+                value={appTheme === 'dark'}
+                onValueChange={(val) => {
+                  const newTheme = val ? 'dark' : 'light';
+                  setAppTheme(newTheme);
+                  saveStringPref('app_theme', newTheme);
+                }}
+                thumbColor={appTheme === 'dark' ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
+              />
+            </View>
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: palette.surfaceSecondary, borderWidth: 1, borderColor: palette.border }]}
               onPress={() => {
                 Alert.alert("Backup", "Preferences backup profile created successfully!");
               }}
             >
-              <Text style={styles.actionButtonText}>Backup Settings Profile</Text>
+              <Text style={[styles.actionButtonText, { color: palette.text }]}>Backup Settings Profile</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -870,7 +929,7 @@ export default function App() {
                 Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >
-              <Text style={[styles.actionButtonText, { color: palette.red }]}>Wipe Settings & Reset All</Text>
+              <Text style={[styles.actionButtonText, { color: palette.red }]}>Reset All Settings</Text>
             </TouchableOpacity>
           </View>
         );
@@ -883,34 +942,103 @@ export default function App() {
     return (
       <View style={{ flex: 1 }}>
         <TouchableOpacity
-          style={styles.backHeader}
+          style={appStyles.backHeader}
           onPress={() => setActiveSection(null)}
         >
           <Icon name="back" size={28} color={palette.emerald} />
-          <Text style={styles.backHeaderText}>Back to Settings</Text>
+          <Text style={appTextStyles.backHeaderText}>Back to Settings</Text>
         </TouchableOpacity>
-        <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-          <Text style={styles.sectionHeaderTitle}>{title}</Text>
-          <Text style={styles.sectionHeaderDesc}>{desc}</Text>
-          <View style={styles.sectionCardWrapper}>{content}</View>
+        <ScrollView style={[styles.scrollContainer, { backgroundColor: palette.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
+          <Text style={appTextStyles.sectionHeaderTitle}>{title}</Text>
+          <Text style={appTextStyles.sectionHeaderDesc}>{desc}</Text>
+          <View style={appStyles.sectionCardWrapper}>{content}</View>
         </ScrollView>
       </View>
     );
   };
 
+  const appStyles = {
+    heroCard: [styles.heroCard, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    quickActionCard: [styles.quickActionCard, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    dashboardWidget: [styles.dashboardWidget, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    premiumCard: [styles.premiumCard, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    settingsGroupCard: [styles.settingsGroupCard, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    settingItemRow: [styles.settingItemRow, { borderBottomColor: palette.border }],
+    settingSwitchRow: [styles.settingSwitchRow, { borderBottomColor: palette.border }],
+    settingsGroupRowBorder: [styles.settingsGroupRowBorder, { borderBottomColor: palette.border }],
+    sectionCardWrapper: [styles.sectionCardWrapper, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    wallpaperContainer: [styles.wallpaperContainer, { backgroundColor: palette.surfaceSecondary, borderColor: palette.cardBorder }],
+    backHeader: [styles.backHeader, { backgroundColor: palette.background, borderBottomColor: palette.border }],
+    settingsIconWrapper: [styles.settingsIconWrapper, { backgroundColor: palette.iconWrapperBg }],
+    premiumInputBox: [styles.premiumInputBox, { backgroundColor: palette.inputBg, color: palette.inputText, borderColor: palette.cardBorder }],
+    kbIllustration: [styles.kbIllustration, { backgroundColor: palette.glass, borderColor: palette.glass }],
+    versionBadge: [styles.versionBadge, { backgroundColor: palette.surface, borderColor: palette.border }],
+    statusChip: [styles.statusChip, { backgroundColor: palette.surface, borderColor: palette.border }],
+    socialButton: [styles.socialButton, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    featureCard: [styles.featureCard, { backgroundColor: palette.cardBg, borderColor: palette.cardBorder }],
+    glassCopyright: [styles.glassCopyright, { backgroundColor: palette.glass, borderColor: palette.glass }],
+    tabsSelectorRow: [styles.tabsSelectorRow, { backgroundColor: palette.surfaceSecondary }],
+    tabSelectorCellActive: [styles.tabSelectorCellActive, { backgroundColor: palette.surface, borderColor: palette.border }],
+    quantityBtn: [styles.quantityBtn, { backgroundColor: palette.surfaceSecondary, borderColor: palette.border }],
+    floatingNavItemActive: [styles.floatingNavItemActive, { backgroundColor: palette.glass }],
+  };
+
+  const appTextStyles = {
+    heroBrandText: [styles.heroBrandText, { color: palette.text }],
+    heroEditionText: [styles.heroEditionText, { color: palette.subtext }],
+    gridSectionHeading: [styles.gridSectionHeading, { color: palette.subtext }],
+    quickActionLabel: [styles.quickActionLabel, { color: palette.text }],
+    widgetTitle: [styles.widgetTitle, { color: palette.subtext }],
+    widgetVal: [styles.widgetVal, { color: palette.text }],
+    widgetSub: [styles.widgetSub, { color: palette.subtext }],
+    premiumCardTitle: [styles.premiumCardTitle, { color: palette.text }],
+    premiumCardDesc: [styles.premiumCardDesc, { color: palette.subtext }],
+    settingsMainTitle: [styles.settingsMainTitle, { color: palette.text }],
+    settingsGroupHeader: [styles.settingsGroupHeader, { color: palette.subtext }],
+    settingsRowTitle: [styles.settingsRowTitle, { color: palette.text }],
+    settingsRowSubtitle: [styles.settingsRowSubtitle, { color: palette.subtext }],
+    settingsChevron: [styles.settingsChevron, { color: palette.subtext }],
+    aboutTitle: [styles.aboutTitle, { color: palette.text }],
+    versionBadgeText: [styles.versionBadgeText, { color: palette.subtext }],
+    statusChipLabel: [styles.statusChipLabel, { color: palette.text }],
+    featureCardTitle: [styles.featureCardTitle, { color: palette.text }],
+    featureCardDesc: [styles.featureCardDesc, { color: palette.subtext }],
+    socialButtonText: [styles.socialButtonText, { color: palette.text }],
+    copyrightText: [styles.copyrightText, { color: palette.subtext }],
+    sectionHeaderTitle: [styles.sectionHeaderTitle, { color: palette.text }],
+    sectionHeaderDesc: [styles.sectionHeaderDesc, { color: palette.subtext }],
+    sliderHeading: [styles.sliderHeading, { color: palette.text }],
+    sliderDesc: [styles.sliderDesc, { color: palette.subtext }],
+    wallpaperTitle: [styles.wallpaperTitle, { color: palette.text }],
+    wallpaperSubtitle: [styles.wallpaperSubtitle, { color: palette.subtext }],
+    wallpaperBtnText: [styles.wallpaperBtnText, { color: palette.text }],
+    settingItemTitle: [styles.settingItemTitle, { color: palette.text }],
+    settingItemSubtitle: [styles.settingItemSubtitle, { color: palette.subtext }],
+    tabSelectorCellText: [styles.tabSelectorCellText, { color: palette.subtext }],
+    tabSelectorCellTextActive: [styles.tabSelectorCellTextActive, { color: palette.emerald }],
+    quantityBtnText: [styles.quantityBtnText, { color: palette.text }],
+    quantityValue: [styles.quantityValue, { color: palette.text }],
+    backHeaderText: [styles.backHeaderText, { color: palette.text }],
+    actionButtonText: [styles.actionButtonText, { color: palette.text }],
+    floatingNavLabel: [styles.floatingNavLabel, { color: palette.subtext }],
+    floatingNavLabelActive: [styles.floatingNavLabelActive, { color: palette.emerald }],
+    themeCardName: [styles.themeCardName, { color: palette.text }],
+    badgeTextGreen: [styles.badgeTextGreen, { color: palette.emerald }],
+  };
+
   const renderHome = () => {
     return (
-      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.heroCard}>
+      <ScrollView style={[styles.scrollContainer, { backgroundColor: palette.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={appStyles.heroCard}>
           <View style={[styles.glowBlob, { backgroundColor: palette.emerald, left: -40, top: -45 }]} />
           <View style={[styles.glowBlob, { backgroundColor: palette.blue, right: -40, bottom: -45 }]} />
 
           <View style={styles.heroHeader}>
             <View>
-              <Text style={styles.heroBrandText}>Orbit Keyboard</Text>
-              <Text style={styles.heroEditionText}>Premium Edition v2.1.0</Text>
+              <Text style={appTextStyles.heroBrandText}>Orbit Keyboard</Text>
+              <Text style={appTextStyles.heroEditionText}>Premium Edition v2.1.0</Text>
             </View>
-            <View style={[styles.heroStatusChip, { backgroundColor: isKeyboardDefault ? 'rgba(0,214,143,0.12)' : 'rgba(255,176,32,0.12)' }]}>
+            <View style={[styles.heroStatusChip, { backgroundColor: isKeyboardDefault ? `${palette.emerald}1f` : `${palette.orange}1f` }]}>
               <View style={[styles.heroStatusDot, { backgroundColor: isKeyboardDefault ? palette.emerald : palette.orange }]} />
               <Text style={[styles.heroStatusText, { color: isKeyboardDefault ? palette.emerald : palette.orange }]}>
                 {isKeyboardDefault ? 'Active' : 'Setup Required'}
@@ -918,7 +1046,7 @@ export default function App() {
             </View>
           </View>
 
-          <View style={styles.kbIllustration}>
+          <View style={appStyles.kbIllustration}>
             <View style={styles.kbRow}>
               <View style={styles.kbKey} />
               <View style={styles.kbKey} />
@@ -944,30 +1072,30 @@ export default function App() {
           </View>
         </View>
 
-        <Text style={styles.gridSectionHeading}>Quick Actions</Text>
+        <Text style={appTextStyles.gridSectionHeading}>Quick Actions</Text>
         <View style={styles.quickActionsContainer}>
           <TouchableOpacity
-            style={styles.quickActionCard}
+            style={appStyles.quickActionCard}
             onPress={openKeyboardSettings}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(0, 214, 143, 0.12)' }]}>
               <Icon name="power" size={20} color={palette.emerald} />
             </View>
-            <Text style={styles.quickActionLabel}>Enable</Text>
+            <Text style={appTextStyles.quickActionLabel}>Enable</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickActionCard}
+            style={appStyles.quickActionCard}
             onPress={selectKeyboard}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(79, 140, 255, 0.12)' }]}>
               <Icon name="keyboard" size={20} color={palette.blue} />
             </View>
-            <Text style={styles.quickActionLabel}>Open / Switch</Text>
+            <Text style={appTextStyles.quickActionLabel}>Open / Switch</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickActionCard}
+            style={appStyles.quickActionCard}
             onPress={() => {
               if (activeTab === 'home') {
                 Alert.alert("Interactive Test", "Scroll down to tap on the interactive Test Box input field.");
@@ -977,11 +1105,11 @@ export default function App() {
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 176, 32, 0.12)' }]}>
               <Icon name="test" size={20} color={palette.orange} />
             </View>
-            <Text style={styles.quickActionLabel}>Test Input</Text>
+            <Text style={appTextStyles.quickActionLabel}>Test Input</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.quickActionCard}
+            style={appStyles.quickActionCard}
             onPress={() => {
               setActiveTab('settings');
               setActiveSection(null);
@@ -990,54 +1118,54 @@ export default function App() {
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 92, 92, 0.12)' }]}>
               <Icon name="settings" size={20} color={palette.red} />
             </View>
-            <Text style={styles.quickActionLabel}>Settings</Text>
+            <Text style={appTextStyles.quickActionLabel}>Settings</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.gridSectionHeading}>Dashboard Statistics</Text>
+        <Text style={appTextStyles.gridSectionHeading}>Dashboard Statistics</Text>
         <View style={styles.dashboardGrid}>
-          <View style={styles.dashboardWidget}>
-            <Text style={styles.widgetTitle}>Status</Text>
-            <Text style={[styles.widgetVal, { color: isKeyboardEnabled ? palette.emerald : palette.red }]}>
+          <View style={appStyles.dashboardWidget}>
+            <Text style={appTextStyles.widgetTitle}>Status</Text>
+            <Text style={[appTextStyles.widgetVal, { color: isKeyboardEnabled ? palette.emerald : palette.red }]}>
               {isKeyboardEnabled ? 'Active' : 'Disabled'}
             </Text>
-            <Text style={styles.widgetSub}>Settings service</Text>
+            <Text style={appTextStyles.widgetSub}>Settings service</Text>
           </View>
 
-          <View style={styles.dashboardWidget}>
-            <Text style={styles.widgetTitle}>Languages</Text>
-            <Text style={[styles.widgetVal, { color: palette.blue }]}>
+          <View style={appStyles.dashboardWidget}>
+            <Text style={appTextStyles.widgetTitle}>Languages</Text>
+            <Text style={[appTextStyles.widgetVal, { color: palette.blue }]}>
               {selectedLanguages.length}
             </Text>
-            <Text style={styles.widgetSub}>Active layout sets</Text>
+            <Text style={appTextStyles.widgetSub}>Active layout sets</Text>
           </View>
 
-          <View style={styles.dashboardWidget}>
-            <Text style={styles.widgetTitle}>Active Theme</Text>
-            <Text style={[styles.widgetVal, { color: palette.orange, textTransform: 'capitalize' }]}>
+          <View style={appStyles.dashboardWidget}>
+            <Text style={appTextStyles.widgetTitle}>Active Theme</Text>
+            <Text style={[appTextStyles.widgetVal, { color: palette.orange, textTransform: 'capitalize' }]}>
               {theme}
             </Text>
-            <Text style={styles.widgetSub}>Interface skin profile</Text>
+            <Text style={appTextStyles.widgetSub}>Interface skin profile</Text>
           </View>
 
-          <View style={styles.dashboardWidget}>
-            <Text style={styles.widgetTitle}>Clipboard cap</Text>
-            <Text style={[styles.widgetVal, { color: palette.emerald }]}>
+          <View style={appStyles.dashboardWidget}>
+            <Text style={appTextStyles.widgetTitle}>Clipboard cap</Text>
+            <Text style={[appTextStyles.widgetVal, { color: palette.emerald }]}>
               {clipboardLimit}
             </Text>
-            <Text style={styles.widgetSub}>Maximum history log</Text>
+            <Text style={appTextStyles.widgetSub}>Maximum history log</Text>
           </View>
         </View>
 
-        <View style={styles.premiumCard}>
-          <Text style={styles.premiumCardTitle}>Test Your Overhauled Keyboard</Text>
-          <Text style={styles.premiumCardDesc}>
+        <View style={appStyles.premiumCard}>
+          <Text style={appTextStyles.premiumCardTitle}>Test Your Overhauled Keyboard</Text>
+          <Text style={appTextStyles.premiumCardDesc}>
             Tap the input field below to test settings like customizable keyspacing, long press delays, double-tap shift lock, word suggestions, and drag resizing handles.
           </Text>
           <TextInput
-            style={styles.premiumInputBox}
+            style={appStyles.premiumInputBox}
             placeholder="Tap here to test NeoType input..."
-            placeholderTextColor="rgba(255,255,255,0.25)"
+            placeholderTextColor={palette.subtext}
             multiline
           />
         </View>
@@ -1087,27 +1215,27 @@ export default function App() {
     ];
 
     return (
-      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-        <Text style={styles.settingsMainTitle}>Control Panel Mappings</Text>
+      <ScrollView style={[styles.scrollContainer, { backgroundColor: palette.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
+        <Text style={appTextStyles.settingsMainTitle}>Control Panel Mappings</Text>
         {groups.map((group, gIdx) => (
           <View key={gIdx} style={{ marginBottom: 20 }}>
-            <Text style={styles.settingsGroupHeader}>{group.header}</Text>
-            <View style={styles.settingsGroupCard}>
+            <Text style={appTextStyles.settingsGroupHeader}>{group.header}</Text>
+            <View style={appStyles.settingsGroupCard}>
               {group.items.map((sec, iIdx) => {
                 const isLast = iIdx === group.items.length - 1;
                 return (
                   <TouchableOpacity
                     key={sec.id}
-                    style={[styles.settingsGroupRow, !isLast && styles.settingsGroupRowBorder]}
+                    style={[styles.settingsGroupRow, !isLast && appStyles.settingsGroupRowBorder]}
                     onPress={() => setActiveSection(sec.id)}
                   >
                     <View style={styles.settingsRowContent}>
-                      <View style={styles.settingsIconWrapper}>
+                      <View style={appStyles.settingsIconWrapper}>
                         <Icon name={sec.icon} size={18} color={palette.text} />
                       </View>
                       <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={styles.settingsRowTitle}>{sec.title}</Text>
-                        <Text style={styles.settingsRowSubtitle}>{sec.subtitle}</Text>
+                        <Text style={appTextStyles.settingsRowTitle}>{sec.title}</Text>
+                        <Text style={appTextStyles.settingsRowSubtitle}>{sec.subtitle}</Text>
                       </View>
                     </View>
                     <Icon name="arrow" size={20} color={palette.subtext} />
@@ -1123,34 +1251,34 @@ export default function App() {
 
   const renderAbout = () => {
     return (
-      <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView style={[styles.scrollContainer, { backgroundColor: palette.background }]} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.aboutHeader}>
           <View style={styles.logoCircle}>
             <Text style={styles.logoText}>O</Text>
           </View>
-          <Text style={styles.aboutTitle}>Orbit Keyboard</Text>
+          <Text style={appTextStyles.aboutTitle}>Orbit Keyboard</Text>
           <Text style={styles.aboutEdition}>Premium Edition</Text>
-          <View style={styles.versionBadge}>
-            <Text style={styles.versionBadgeText}>v2.1.0-premium</Text>
+          <View style={appStyles.versionBadge}>
+            <Text style={appTextStyles.versionBadgeText}>v2.1.0-premium</Text>
           </View>
         </View>
 
         <View style={styles.chipsRow}>
-          <View style={styles.statusChip}>
+          <View style={appStyles.statusChip}>
             <Icon name="power" size={12} color={palette.emerald} />
-            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Active</Text>
+            <Text style={[appTextStyles.statusChipLabel, { marginLeft: 6 }]}>Active</Text>
           </View>
-          <View style={styles.statusChip}>
+          <View style={appStyles.statusChip}>
             <Icon name="search" size={12} color={palette.blue} />
-            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Secure</Text>
+            <Text style={[appTextStyles.statusChipLabel, { marginLeft: 6 }]}>Secure</Text>
           </View>
-          <View style={styles.statusChip}>
+          <View style={appStyles.statusChip}>
             <Icon name="star" size={12} color={palette.orange} />
-            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Fast</Text>
+            <Text style={[appTextStyles.statusChipLabel, { marginLeft: 6 }]}>Fast</Text>
           </View>
         </View>
 
-        <Text style={styles.gridSectionHeading}>Engine Specs</Text>
+        <Text style={appTextStyles.gridSectionHeading}>Engine Specs</Text>
         <View style={styles.featuresContainer}>
           {[
             { title: 'Smart Suggestions', desc: 'Prefix vocabulary indexing recommends dictionary terms dynamically.' },
@@ -1158,14 +1286,14 @@ export default function App() {
             { title: 'Clipboard Manager', desc: 'Secure local storage keeps track of logs & pin limits safely.' },
             { title: 'Emoji Engine', desc: 'Hold down emoji categories to continuous type them instantly.' },
           ].map((item, idx) => (
-            <View key={idx} style={styles.featureCard}>
-              <Text style={styles.featureCardTitle}>{item.title}</Text>
-              <Text style={styles.featureCardDesc}>{item.desc}</Text>
+            <View key={idx} style={appStyles.featureCard}>
+              <Text style={appTextStyles.featureCardTitle}>{item.title}</Text>
+              <Text style={appTextStyles.featureCardDesc}>{item.desc}</Text>
             </View>
           ))}
         </View>
 
-        <Text style={styles.gridSectionHeading}>Community</Text>
+        <Text style={appTextStyles.gridSectionHeading}>Community</Text>
         <View style={styles.socialRow}>
           {[
             { label: 'GitHub', url: 'https://github.com/sid238/voice-translator-keyboard' },
@@ -1176,16 +1304,16 @@ export default function App() {
           ].map((soc, idx) => (
             <TouchableOpacity
               key={idx}
-              style={styles.socialButton}
+              style={appStyles.socialButton}
               onPress={() => Linking.openURL(soc.url)}
             >
-              <Text style={styles.socialButtonText}>{soc.label}</Text>
+              <Text style={appTextStyles.socialButtonText}>{soc.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.glassCopyright}>
-          <Text style={styles.copyrightText}>
+        <View style={appStyles.glassCopyright}>
+          <Text style={appTextStyles.copyrightText}>
             Developed by Zorvex
           </Text>
         </View>
@@ -1194,8 +1322,8 @@ export default function App() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <SafeAreaView style={[styles.container, { backgroundColor: palette.background }]}>
+      <StatusBar barStyle={palette.statusBarStyle} backgroundColor={palette.statusBarBg} />
 
       <View style={{ flex: 1, paddingBottom: isKeyboardVisible ? 0 : 80 }}>
         {activeTab === 'home' && renderHome()}
@@ -1204,7 +1332,7 @@ export default function App() {
       </View>
 
       {!isKeyboardVisible && (
-        <View style={styles.floatingNavBar}>
+        <View style={[styles.floatingNavBar, { backgroundColor: palette.navBg, borderColor: palette.navBorder }]}>
           {[
             { id: 'home', label: 'Home', icon: 'home' },
             { id: 'settings', label: 'Settings', icon: 'settings' },
