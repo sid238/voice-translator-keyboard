@@ -137,41 +137,53 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private class FireParticle(
         var x: Float,
         var y: Float,
+        var vx: Float,
+        var vy: Float,
+        val color: Int,
+        var size: Float,
+        val maxLife: Float,
+        var life: Float,
+        val wobblePhase: Float
+    )
+
+    private fun spawnFire(x: Float, y: Float) {
+        for (i in 0..34) {
+            val baseVx = -2f + random.nextFloat() * 4f
+            val vy = -(4f + random.nextFloat() * 8f)
+            val size = 8f + random.nextFloat() * 14f
+            val life = 500f + random.nextFloat() * 500f
+            val colors = arrayOf("#FF4500", "#FF8C00", "#FFD700", "#FFFF00")
+            val colorStr = colors[random.nextInt(colors.size)]
+            val color = Color.parseColor(colorStr)
+            val spawnY = y + random.nextFloat() * 20f
+            fireParticles.add(FireParticle(x, spawnY, baseVx, vy, color, size, life, life, random.nextFloat() * 6f))
+        }
+    }
+
+    // --- WATER DROPLET ---
+    private class WaterRipple(
+        var x: Float,
+        var y: Float,
         val vx: Float,
         val vy: Float,
         val color: Int,
         var size: Float,
         val maxLife: Float,
-        var life: Float
-    )
-
-    private fun spawnFire(x: Float, y: Float) {
-        for (i in 0..22) {
-            val vx = -4f + random.nextFloat() * 8f
-            val vy = -3f - random.nextFloat() * 6f
-            val size = 10f + random.nextFloat() * 16f
-            val life = 600f + random.nextFloat() * 400f
-            val colors = arrayOf("#FFD700", "#FF8C00", "#FF4500", "#FF0000")
-            val colorStr = colors[random.nextInt(colors.size)]
-            val color = Color.parseColor(colorStr)
-            fireParticles.add(FireParticle(x, y, vx, vy, color, size, life, life))
-        }
-    }
-
-    // --- WATER RIPPLE ---
-    private class WaterRipple(
-        val x: Float,
-        val y: Float,
-        var radius: Float,
-        val maxRadius: Float,
-        val color: Int,
-        val duration: Float,
-        var progress: Float
+        var life: Float,
+        var hasSplashed: Boolean
     )
 
     private fun spawnRipple(x: Float, y: Float) {
-        val color = Color.argb(180, 79, 140, 255)
-        ripples.add(WaterRipple(x, y, 0f, 220f, color, 800f, 0f))
+        for (i in 0..24) {
+            val vx = -1.5f + random.nextFloat() * 3f
+            val vy = 2f + random.nextFloat() * 6f
+            val size = 3f + random.nextFloat() * 5f
+            val life = 700f + random.nextFloat() * 400f
+            val colors = arrayOf("#00BFFF", "#1E90FF", "#00CED1", "#87CEEB")
+            val colorStr = colors[random.nextInt(colors.size)]
+            val color = Color.parseColor(colorStr)
+            ripples.add(WaterRipple(x, y, vx, vy, color, size, life, life, false))
+        }
     }
 
     // --- MATRIX RAIN ---
@@ -263,16 +275,14 @@ class KeyboardEffectsView @JvmOverloads constructor(
             when (effectType) {
                 "fire" -> {
                     // Keep spawning fire particles while pressed
-                    if (fireParticles.size < 30) {
+                    if (fireParticles.size < 60) {
                         spawnFire(pressX, pressY)
                     }
                 }
                 "water_ripple" -> {
-                    // Keep ripple alive while pressed - reset progress
-                    if (ripples.isNotEmpty()) {
-                        val r = ripples[0]
-                        r.progress = 0f
-                        r.radius = 0f
+                    // Keep spawning water droplets while pressed
+                    if (ripples.size < 80) {
+                        spawnRipple(pressX, pressY)
                     }
                 }
                 "matrix_rain" -> {
@@ -356,54 +366,66 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     continue
                 }
 
-                p.x += p.vx
+                val wobble = kotlin.math.sin(p.wobblePhase + p.life * 0.02f) * 1.5f
+                p.x += p.vx + wobble
                 p.y += p.vy
-                p.size *= 0.95f
+                p.size *= 0.97f
 
-                val ratio = p.life / p.maxLife
+                val ratio = (p.life / p.maxLife).coerceIn(0f, 1f)
                 val alpha = (ratio * 255).toInt().coerceIn(0, 255)
-                paint.color = p.color
-                paint.alpha = alpha
 
-                paint.maskFilter = BlurMaskFilter(6f, BlurMaskFilter.Blur.NORMAL)
-                canvas.drawCircle(p.x, p.y, p.size, paint)
+                val flicker = 0.7f + random.nextFloat() * 0.3f
+                paint.color = p.color
+                paint.alpha = (alpha * flicker).toInt().coerceIn(0, 255)
+
+                paint.maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(p.x, p.y, p.size * ratio.coerceAtLeast(0.3f), paint)
+
+                val glowPaint = Paint(paint).apply {
+                    alpha = (alpha * 0.3f).toInt()
+                }
+                canvas.drawCircle(p.x, p.y, p.size * 2f, glowPaint)
                 paint.maskFilter = null
             }
         }
 
-        // 3. Draw Water Ripples
+        // 3. Draw Water Droplets
         if (ripples.isNotEmpty()) {
             needsRedraw = true
             val iterator = ripples.iterator()
             while (iterator.hasNext()) {
                 val r = iterator.next()
-                r.progress += 16f
-                if (r.progress >= r.duration) {
+                r.life -= 10f
+                if (r.life <= 0) {
+                    if (!r.hasSplashed) {
+                        r.hasSplashed = true
+                        for (i in 0..4) {
+                            val splashX = r.x + random.nextFloat() * 8f - 4f
+                            val splashY = r.y + random.nextFloat() * 4f
+                            val splashVx = -2f + random.nextFloat() * 4f
+                            val splashVy = -3f - random.nextFloat() * 3f
+                            ripples.add(WaterRipple(splashX, splashY, splashVx, splashVy, r.color, r.size * 0.4f, 200f, 200f, false))
+                        }
+                    }
                     iterator.remove()
                     continue
                 }
 
-                val ratio = r.progress / r.duration
-                r.radius = r.maxRadius * ratio
-                val alpha = ((1f - ratio) * 255).toInt().coerceIn(0, 255)
+                r.x += r.vx
+                r.y += r.vy
+                r.vy += 0.3f
 
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 6f * (1f - ratio)
+                val ratio = r.life / r.maxLife
+                val alpha = (ratio * 255).toInt().coerceIn(0, 255)
+
                 paint.color = r.color
                 paint.alpha = alpha
-                canvas.drawCircle(r.x, r.y, r.radius, paint)
-
-                if (ratio > 0.3f) {
-                    val ratio2 = (r.progress - r.duration * 0.3f) / (r.duration * 0.7f)
-                    val r2 = r.maxRadius * 0.7f * ratio2
-                    val alpha2 = ((1f - ratio2) * 180).toInt().coerceIn(0, 255)
-                    paint.strokeWidth = 4f * (1f - ratio2)
-                    paint.alpha = alpha2
-                    canvas.drawCircle(r.x, r.y, r2, paint)
-                }
-
                 paint.style = Paint.Style.FILL
+                paint.maskFilter = BlurMaskFilter(3f, BlurMaskFilter.Blur.NORMAL)
+                canvas.drawCircle(r.x, r.y, r.size * (0.5f + ratio * 0.5f), paint)
+                paint.maskFilter = null
             }
+            paint.style = Paint.Style.FILL
         }
 
         // 4. Draw Matrix Rain

@@ -85,20 +85,6 @@ const Icon = ({ name, size = 22, color = '#FFFFFF', active = false }) => {
       </View>
     );
   }
-  if (name === 'gesture') {
-    return (
-      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
-        <View style={{ width: s * 0.6, height: s * 0.15, borderRadius: 3, backgroundColor: c, position: 'absolute', top: s * 0.35 }} />
-        <View style={{ width: s * 0.15, height: s * 0.5, borderRadius: 3, backgroundColor: c, position: 'absolute', left: s * 0.1, top: s * 0.15 }} />
-        <View style={{
-          width: 0, height: 0,
-          borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 7,
-          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c,
-          position: 'absolute', right: s * 0.05, top: s * 0.35
-        }} />
-      </View>
-    );
-  }
   if (name === 'typing') {
     return (
       <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
@@ -208,10 +194,10 @@ export default function App() {
   const [vibeEnabled, setVibeEnabled] = useState(true);
   const [numberRowEnabled, setNumberRowEnabled] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(270);
-  const [gestureEnabled, setGestureEnabled] = useState(true);
+  // gesture removed
 
-  const [keySpacing, setKeySpacing] = useState(8);
-  const [longPressDelay, setLongPressDelay] = useState(600);
+  const [keySpacing, setKeySpacing] = useState(9);
+  const [longPressDelay, setLongPressDelay] = useState(700);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
@@ -227,7 +213,7 @@ export default function App() {
   const [emojiScale, setEmojiScale] = useState('medium');
   const [addonVoiceText, setAddonVoiceText] = useState(true);
   const [addonTranslate, setAddonTranslate] = useState(true);
-  const [addonGrammar, setAddonGrammar] = useState(true);
+
   const [appTheme, setAppTheme] = useState('dark');
 
   useEffect(() => {
@@ -302,8 +288,7 @@ export default function App() {
           setVibeEnabled(vibe);
           const numRow = await FloatingBubble.getBooleanSetting('number_row_enabled', true);
           setNumberRowEnabled(numRow);
-          const gest = await FloatingBubble.getBooleanSetting('gesture_enabled', true);
-          setGestureEnabled(gest);
+          // gesture removed
 
           const ac = await FloatingBubble.getBooleanSetting('auto_cap', true);
           setAutoCap(ac);
@@ -319,8 +304,7 @@ export default function App() {
           setAddonVoiceText(avt);
           const atr = await FloatingBubble.getBooleanSetting('addon_translate', true);
           setAddonTranslate(atr);
-          const agr = await FloatingBubble.getBooleanSetting('addon_grammar', true);
-          setAddonGrammar(agr);
+
 
           const timeline = await FloatingBubble.getBooleanSetting('clipboard_timeline', false);
           setClipboardTimelineEnabled(timeline);
@@ -332,9 +316,9 @@ export default function App() {
           setClipboardLimit(climit);
           const plimit = await FloatingBubble.getIntSetting('pin_limit', 10);
           setPinLimit(plimit);
-          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 8);
+          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 9);
           setKeySpacing(spacing);
-          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 600);
+          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 700);
           setLongPressDelay(delay);
         }
       }
@@ -619,7 +603,7 @@ export default function App() {
               <Text style={appTextStyles.sliderHeading}>Key Spacing (dp)</Text>
               <Text style={appTextStyles.sliderDesc}>Current spacing: {keySpacing} dp</Text>
               <View style={appStyles.tabsSelectorRow}>
-                {[2, 4, 6, 8, 10].map((item) => (
+                {[2, 4, 6, 8, 9, 10].map((item) => (
                   <TouchableOpacity
                     key={item}
                     style={[styles.tabSelectorCell, keySpacing === item && appStyles.tabSelectorCellActive]}
@@ -640,7 +624,7 @@ export default function App() {
               <Text style={appTextStyles.sliderHeading}>Long Press Delay (ms)</Text>
               <Text style={appTextStyles.sliderDesc}>Current delay: {longPressDelay} ms</Text>
               <View style={appStyles.tabsSelectorRow}>
-                {[200, 300, 400, 500, 600].map((item) => (
+                {[200, 300, 400, 500, 600, 700].map((item) => (
                   <TouchableOpacity
                     key={item}
                     style={[styles.tabSelectorCell, longPressDelay === item && appStyles.tabSelectorCellActive]}
@@ -762,30 +746,6 @@ export default function App() {
         );
         break;
 
-      case 'gesture':
-        title = 'Gesture & Glide';
-        desc = 'Slide your finger over letters to write seamlessly without raising the hand.';
-        content = (
-          <View>
-            <View style={appStyles.settingSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={appTextStyles.settingItemTitle}>Enable Glide Typing</Text>
-                <Text style={appTextStyles.settingItemSubtitle}>Type by sliding over letter paths</Text>
-              </View>
-              <Switch
-                value={gestureEnabled}
-                onValueChange={(val) => {
-                  setGestureEnabled(val);
-                  saveBooleanPref('gesture_enabled', val);
-                }}
-                thumbColor={gestureEnabled ? palette.emerald : '#555'}
-                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
-              />
-            </View>
-          </View>
-        );
-        break;
-
       case 'clipboard':
         title = 'Clipboard Manager';
         desc = 'Configure copied item retention limits and prevent history loss.';
@@ -879,21 +839,7 @@ export default function App() {
               />
             </View>
 
-            <View style={appStyles.settingSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={appTextStyles.settingItemTitle}>Grammar Checker</Text>
-                <Text style={appTextStyles.settingItemSubtitle}>Check text for grammar errors using LanguageTool</Text>
-              </View>
-              <Switch
-                value={addonGrammar}
-                onValueChange={(val) => {
-                  setAddonGrammar(val);
-                  saveBooleanPref('addon_grammar', val);
-                }}
-                thumbColor={addonGrammar ? palette.emerald : '#555'}
-                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
-              />
-            </View>
+
           </View>
         );
         break;
@@ -943,8 +889,8 @@ export default function App() {
                 saveBooleanPref('vibration_enabled', true);
                 saveBooleanPref('number_row_enabled', true);
                 saveIntPref('keyboard_height_dp', 270);
-                saveIntPref('key_spacing_dp', 8);
-                saveIntPref('long_press_delay_ms', 600);
+                saveIntPref('key_spacing_dp', 9);
+                saveIntPref('long_press_delay_ms', 700);
                 Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >
@@ -1208,7 +1154,7 @@ export default function App() {
         header: 'Keyboard Settings',
         items: [
           { id: 'keyboard', title: 'Height & Layout spacing', subtitle: 'Configure key heights, padding offsets, sound & vibrations', icon: 'keyboard' },
-          { id: 'gesture', title: 'Gesture Glide Typing', subtitle: 'Type by swiping paths across key overlays', icon: 'gesture' }
+          // gesture removed
         ]
       },
       {
