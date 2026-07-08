@@ -77,7 +77,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = true
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 4
+    private var keySpacingDp = 6
     private var lastSpacePressTime: Long = 0
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
@@ -305,7 +305,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        updateKeyboardLayout()
+        handler.removeCallbacks(layoutUpdateRunnable)
+        handler.postDelayed(layoutUpdateRunnable, 150)
     }
 
     override fun onCreateInputView(): View {
@@ -354,7 +355,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
-        longPressDelayMs = prefs.getInt("long_press_delay_ms", 400)
+        longPressDelayMs = prefs.getInt("long_press_delay_ms", 300)
 
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
@@ -1706,7 +1707,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         } else {
             listOf("2/2", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
         }
-        val row5 = listOf("ABC", "😊", "Spacebar", ",", "Enter")
+        val row5 = listOf("ABC", "emoji", "Spacebar", ",", "Enter")
 
         // Number row is always visible in symbols mode
         layout.addView(createKeyRow(row1))
@@ -1745,7 +1746,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val keyView = FrameLayout(this).apply {
                 val weight = when (key.lowercase()) {
                     "spacebar", " ", "␣" -> 4.0f
-                    "shift", "back", "enter", "?123", "abc", "📋", "☺", "⚙" -> 1.5f
+                    "shift", "back", "enter", "?123", "abc", "emoji" -> 1.5f
                     else -> 1.0f
                 }
                 layoutParams = LinearLayout.LayoutParams(
@@ -1753,12 +1754,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     weight
                 ).apply {
-                    setMargins(dpToPx(keySpacingDp), dpToPx(2), dpToPx(keySpacingDp), dpToPx(2))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(3), dpToPx(keySpacingDp), dpToPx(3))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
                     val isActiveShift = isShifted || isCapsLock
-                    val isSpecial = listOf("shift", "back", "enter", "?123", "abc", "📋", "☺", "⚙").contains(key.lowercase())
+                    val isSpecial = listOf("shift", "back", "enter", "?123", "abc", "emoji").contains(key.lowercase())
                     val bgColor = if (key.lowercase() == "shift" && isActiveShift) {
                         Color.parseColor(themeAccentColor)
                     } else if (isSpecial) {
@@ -1776,16 +1777,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 }
 
                 val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                val isIconKey = listOf("shift", "back", "enter", "📋", "😊", "☺", "⚙").contains(key.lowercase())
+                val isIconKey = listOf("shift", "back", "enter", "emoji").contains(key.lowercase())
                 if (isIconKey) {
                     val imageView = ImageView(context).apply {
                         val iconRes = when (key.lowercase()) {
                             "shift" -> if (isShifted) R.drawable.ic_shift_active else R.drawable.ic_shift
                             "back" -> R.drawable.ic_backspace
                             "enter" -> R.drawable.ic_enter
-                            "📋" -> R.drawable.ic_clipboard
-                            "😊", "☺" -> R.drawable.ic_emoji
-                            "⚙" -> R.drawable.ic_settings
+                            "emoji" -> R.drawable.ic_emoji
                             else -> 0
                         }
                         if (iconRes != 0) {
@@ -1913,7 +1912,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                                 ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                             }
                                         }
-                                        handler.postDelayed(this, 55)
+                                        handler.postDelayed(this, 45)
                                     }
                                 }
                                 handler.postDelayed(backspaceRunnable!!, 380)
@@ -2071,27 +2070,27 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun updateShiftStateBasedOnContext() {
         if (!autoCapEnabled) return
+        val oldShifted = isShifted
         val ic = currentInputConnection
         if (ic == null) {
             isShifted = wasLastKeySpace
-            updateKeyboardLayout()
-            return
-        }
-        val textBefore = ic.getTextBeforeCursor(2, 0)
-        if (textBefore == null || textBefore.isEmpty()) {
-            isShifted = wasLastKeySpace
-            updateKeyboardLayout()
         } else {
-            val str = textBefore.toString()
-            if (str.endsWith(" ") || str.endsWith("\n")) {
-                isShifted = true
-                updateKeyboardLayout()
+            val textBefore = ic.getTextBeforeCursor(2, 0)
+            if (textBefore == null || textBefore.isEmpty()) {
+                isShifted = wasLastKeySpace
             } else {
-                if (isShifted && !isCapsLock) {
-                    isShifted = false
-                    updateKeyboardLayout()
+                val str = textBefore.toString()
+                if (str.endsWith(" ") || str.endsWith("\n")) {
+                    isShifted = true
+                } else {
+                    if (isShifted && !isCapsLock) {
+                        isShifted = false
+                    }
                 }
             }
+        }
+        if (isShifted != oldShifted) {
+            updateKeyboardLayout()
         }
     }
 
@@ -3403,10 +3402,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         if (!vibrationEnabled) return
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(18, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(18)
+            vibrator.vibrate(25)
         }
     }
 
@@ -3445,12 +3444,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setPadding(dpToPx(6), 0, dpToPx(6), 0)
         }
 
-        val closeBtn = TextView(this).apply {
-            text = "✕"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            gravity = Gravity.CENTER
+        val closeBtn = FrameLayout(this).apply {
             background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+            isClickable = true
+            isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
             setOnClickListener {
                 vibrateClick()
@@ -3460,6 +3457,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 updateKeyboardLayout()
             }
         }
+        val closeIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        closeBtn.addView(closeIcon)
         toolbar.addView(closeBtn)
 
         val sourceBtn = TextView(this).apply {
@@ -3960,7 +3965,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     1.0f
                 ).apply {
-                    setMargins(dpToPx(keySpacingDp), dpToPx(2), dpToPx(keySpacingDp), dpToPx(2))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(3), dpToPx(keySpacingDp), dpToPx(3))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {

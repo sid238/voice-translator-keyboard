@@ -19,37 +19,205 @@ import {
 
 const { FloatingBubble } = NativeModules;
 
+const ScreenWidth = Dimensions.get('window').width;
+
+const Icon = ({ name, size = 22, color = '#FFFFFF', active = false }) => {
+  const s = size;
+  const h = size * 0.5;
+  const q = size * 0.25;
+  const c = color;
+
+  if (name === 'home') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+          width: 0, height: 0,
+          borderLeftWidth: s * 0.4, borderRightWidth: s * 0.4, borderBottomWidth: s * 0.35,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c,
+          marginBottom: -2
+        }} />
+        <View style={{ width: s * 0.5, height: s * 0.3, backgroundColor: c, borderRadius: 2 }} />
+      </View>
+    );
+  }
+  if (name === 'settings') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.7, height: s * 0.7, borderRadius: s * 0.35, borderWidth: 2.5, borderColor: c, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: s * 0.3, height: s * 0.3, borderRadius: s * 0.15, backgroundColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'about') {
+    return (
+      <View style={{ width: s, height: s, borderRadius: h, borderWidth: 2.5, borderColor: c, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: c, fontSize: s * 0.45, fontWeight: '900' }}>i</Text>
+      </View>
+    );
+  }
+  if (name === 'theme') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.75, height: s * 0.75, borderRadius: 2, borderWidth: 2, borderColor: c, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '45deg' }] }}>
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c, position: 'absolute', top: 3, left: 3 }} />
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c, position: 'absolute', top: 3, right: 3 }} />
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c, position: 'absolute', bottom: 3, left: 3 }} />
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c, position: 'absolute', bottom: 3, right: 3 }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'keyboard') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ flexDirection: 'row', gap: 2, marginBottom: 2 }}>
+          {[0,1,2,3,4].map(i => <View key={i} style={{ width: 3, height: 4, backgroundColor: c, borderRadius: 1 }} />)}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 2, marginBottom: 2 }}>
+          {[0,1,2,3].map(i => <View key={i} style={{ width: 3, height: 4, backgroundColor: c, borderRadius: 1 }} />)}
+        </View>
+        <View style={{ flexDirection: 'row', gap: 2 }}>
+          <View style={{ width: 6, height: 4, backgroundColor: c, borderRadius: 1 }} />
+          <View style={{ width: 10, height: 4, backgroundColor: c, borderRadius: 1 }} />
+          <View style={{ width: 6, height: 4, backgroundColor: c, borderRadius: 1 }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'gesture') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.6, height: s * 0.15, borderRadius: 3, backgroundColor: c, position: 'absolute', top: s * 0.35 }} />
+        <View style={{ width: s * 0.15, height: s * 0.5, borderRadius: 3, backgroundColor: c, position: 'absolute', left: s * 0.1, top: s * 0.15 }} />
+        <View style={{
+          width: 0, height: 0,
+          borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 7,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c,
+          position: 'absolute', right: s * 0.05, top: s * 0.35
+        }} />
+      </View>
+    );
+  }
+  if (name === 'typing') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.6, height: 2.5, backgroundColor: c, borderRadius: 1, position: 'absolute', top: s * 0.25, transform: [{ rotate: '-45deg' }] }} />
+        <View style={{ width: s * 0.65, height: s * 0.65, borderRadius: 3, borderWidth: 2.5, borderColor: c, position: 'absolute', bottom: 0, right: 0 }} />
+      </View>
+    );
+  }
+  if (name === 'clipboard') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.5, height: s * 0.65, borderRadius: 3, borderWidth: 2.5, borderColor: c, alignItems: 'center', paddingTop: 2 }}>
+          <View style={{ width: s * 0.2, height: s * 0.15, borderRadius: 1.5, borderWidth: 1.5, borderColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'language' || name === 'globe') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.7, height: s * 0.7, borderRadius: s * 0.35, borderWidth: 2.5, borderColor: c, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: s * 0.4, height: s * 0.4, borderRadius: s * 0.2, borderWidth: 1.5, borderColor: c }} />
+          <View style={{ position: 'absolute', width: 1.5, height: s * 0.5, backgroundColor: c, top: s * 0.1 }} />
+          <View style={{ position: 'absolute', width: s * 0.5, height: 1.5, backgroundColor: c, left: s * 0.1 }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'addons') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.35, height: s * 0.35, borderRadius: 3, backgroundColor: c, position: 'absolute', bottom: s * 0.05, right: s * 0.05 }} />
+        <View style={{ width: s * 0.35, height: s * 0.35, borderRadius: 3, borderWidth: 2, borderColor: c, position: 'absolute', top: s * 0.05, left: s * 0.05 }} />
+      </View>
+    );
+  }
+  if (name === 'advanced') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        {[0,1,2].map(i => (
+          <View key={i} style={{ flexDirection: 'row', gap: 3, marginBottom: 3 }}>
+            {[0,1].map(j => <View key={j} style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: c }} />)}
+          </View>
+        ))}
+      </View>
+    );
+  }
+  if (name === 'power') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 2.5, height: s * 0.55, backgroundColor: c, borderRadius: 1.5, position: 'absolute', bottom: s * 0.1 }} />
+        <View style={{ width: s * 0.6, height: s * 0.6, borderRadius: s * 0.3, borderWidth: 2.5, borderColor: c, borderTopColor: 'transparent', position: 'absolute', top: 0 }} />
+      </View>
+    );
+  }
+  if (name === 'test') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.5, height: 2.5, backgroundColor: c, borderRadius: 1, position: 'absolute', top: s * 0.3, transform: [{ rotate: '-45deg' }] }} />
+        <View style={{ width: s * 0.4, height: s * 0.6, borderRadius: 2, borderWidth: 2, borderColor: c, position: 'absolute', bottom: s * 0.05, right: s * 0.05, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: s * 0.2, height: 1.5, backgroundColor: c, marginBottom: 2 }} />
+          <View style={{ width: s * 0.25, height: 1.5, backgroundColor: c, marginBottom: 2 }} />
+          <View style={{ width: s * 0.15, height: 1.5, backgroundColor: c }} />
+        </View>
+      </View>
+    );
+  }
+  if (name === 'search') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: s * 0.5, height: s * 0.5, borderRadius: s * 0.25, borderWidth: 2.5, borderColor: c }} />
+        <View style={{ width: 2, height: s * 0.25, backgroundColor: c, borderRadius: 1, position: 'absolute', bottom: s * 0.08, right: s * 0.08, transform: [{ rotate: '-45deg' }] }} />
+      </View>
+    );
+  }
+  if (name === 'arrow') {
+    return <Text style={{ color: c, fontSize: s * 0.9, fontWeight: '300' }}>›</Text>;
+  }
+  if (name === 'back') {
+    return <Text style={{ color: c, fontSize: s * 0.9, fontWeight: '300' }}>‹</Text>;
+  }
+  if (name === 'star') {
+    return (
+      <View style={{ width: s, height: s, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 0, height: 0, borderLeftWidth: s * 0.12, borderRightWidth: s * 0.12, borderBottomWidth: s * 0.45, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c }} />
+      </View>
+    );
+  }
+  if (name === 'chevron-up') {
+    return <Text style={{ color: c, fontSize: s, fontWeight: '300', marginTop: -4 }}>⌃</Text>;
+  }
+  return <View style={{ width: s, height: s, borderRadius: h, backgroundColor: c, opacity: 0.3 }} />;
+};
+
 export default function App() {
   const [isKeyboardEnabled, setIsKeyboardEnabled] = useState(false);
   const [isKeyboardDefault, setIsKeyboardDefault] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const appState = useRef(AppState.currentState);
 
-  // Bottom Nav Tab: 'home' | 'settings' | 'about'
   const [activeTab, setActiveTab] = useState('home');
 
-  // Active Settings Section: null | string
   const [activeSection, setActiveSection] = useState(null);
 
-  // Preference fields synced with native keyboard SharedPreferences
-  const [theme, setTheme] = useState('green'); // Emerald (#00D68F) Default!
+  const [theme, setTheme] = useState('green');
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [vibeEnabled, setVibeEnabled] = useState(true);
   const [numberRowEnabled, setNumberRowEnabled] = useState(true);
   const [keyboardHeight, setKeyboardHeight] = useState(270);
   const [gestureEnabled, setGestureEnabled] = useState(true);
 
-  // Custom UI Spacing, Suggestions & delay settings
-  const [keySpacing, setKeySpacing] = useState(4);
-  const [longPressDelay, setLongPressDelay] = useState(400);
+  const [keySpacing, setKeySpacing] = useState(6);
+  const [longPressDelay, setLongPressDelay] = useState(300);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
-  // New settings
   const [keyboardEffect, setKeyboardEffect] = useState('none');
   const [clipboardTimelineEnabled, setClipboardTimelineEnabled] = useState(false);
 
-  // Other fields
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [selectedLanguages, setSelectedLanguages] = useState(['en']);
   const [autoCap, setAutoCap] = useState(true);
@@ -111,7 +279,7 @@ export default function App() {
     try {
       if (FloatingBubble) {
         if (FloatingBubble.getStringSetting) {
-          const t = await FloatingBubble.getStringSetting('theme', 'green'); // Default theme emerald
+          const t = await FloatingBubble.getStringSetting('theme', 'green');
           setTheme(t);
           const lang = await FloatingBubble.getStringSetting('selected_language', 'en');
           setSelectedLanguage(lang);
@@ -158,9 +326,9 @@ export default function App() {
           setClipboardLimit(climit);
           const plimit = await FloatingBubble.getIntSetting('pin_limit', 10);
           setPinLimit(plimit);
-          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 4);
+          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 6);
           setKeySpacing(spacing);
-          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 400);
+          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 300);
           setLongPressDelay(delay);
         }
       }
@@ -207,18 +375,18 @@ export default function App() {
     }
   };
 
-  // Color Palette Definitions
   const palette = {
     background: '#000000',
-    surface: '#121212',
+    surface: '#0D0D0D',
     surfaceSecondary: '#1A1A1A',
     emerald: '#00D68F',
     blue: '#4F8CFF',
     orange: '#FFB020',
     red: '#FF5C5C',
     text: '#FFFFFF',
-    subtext: '#A0A0A0',
-    border: '#1F1F1F',
+    subtext: '#8E8E93',
+    border: '#1C1C1E',
+    glass: 'rgba(255,255,255,0.04)',
   };
 
   const renderSectionDetails = () => {
@@ -233,10 +401,10 @@ export default function App() {
         content = (
           <View>
             {[
-              { id: 'en', name: 'English QWERTY', flag: '🇬🇧' },
-              { id: 'hi_phonetic', name: 'Hindi Phonetic (Hinglish)', flag: '🇮🇳' },
-              { id: 'es', name: 'Spanish QWERTY', flag: '🇪🇸' },
-              { id: 'fr', name: 'French AZERTY', flag: '🇫🇷' },
+              { id: 'en', name: 'English QWERTY' },
+              { id: 'hi_phonetic', name: 'Hindi Phonetic (Hinglish)' },
+              { id: 'es', name: 'Spanish QWERTY' },
+              { id: 'fr', name: 'French AZERTY' },
             ].map((lang) => {
               const isSelected = selectedLanguages.includes(lang.id);
               return (
@@ -260,7 +428,7 @@ export default function App() {
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 22, marginRight: 14 }}>{lang.flag}</Text>
+                    <Icon name="globe" size={20} color={isSelected ? palette.emerald : palette.subtext} />
                     <Text style={[styles.settingItemTitle, isSelected && { color: palette.emerald }]}>
                       {lang.name}
                     </Text>
@@ -690,15 +858,15 @@ export default function App() {
                 setVibeEnabled(true);
                 setNumberRowEnabled(true);
                 setKeyboardHeight(270);
-                setKeySpacing(4);
-                setLongPressDelay(400);
+                setKeySpacing(6);
+                setLongPressDelay(300);
                 saveStringPref('theme', 'green');
                 saveBooleanPref('sound_enabled', false);
                 saveBooleanPref('vibration_enabled', true);
                 saveBooleanPref('number_row_enabled', true);
                 saveIntPref('keyboard_height_dp', 270);
-                saveIntPref('key_spacing_dp', 4);
-                saveIntPref('long_press_delay_ms', 400);
+                saveIntPref('key_spacing_dp', 6);
+                saveIntPref('long_press_delay_ms', 300);
                 Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >
@@ -718,7 +886,7 @@ export default function App() {
           style={styles.backHeader}
           onPress={() => setActiveSection(null)}
         >
-          <Text style={styles.backHeaderArrow}>‹</Text>
+          <Icon name="back" size={28} color={palette.emerald} />
           <Text style={styles.backHeaderText}>Back to Settings</Text>
         </TouchableOpacity>
         <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -733,16 +901,14 @@ export default function App() {
   const renderHome = () => {
     return (
       <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Large Premium Hero Card */}
         <View style={styles.heroCard}>
-          {/* Accent Blobs */}
           <View style={[styles.glowBlob, { backgroundColor: palette.emerald, left: -40, top: -45 }]} />
           <View style={[styles.glowBlob, { backgroundColor: palette.blue, right: -40, bottom: -45 }]} />
 
           <View style={styles.heroHeader}>
             <View>
               <Text style={styles.heroBrandText}>Orbit Keyboard</Text>
-              <Text style={styles.heroEditionText}>Premium Edition • v2.1.0</Text>
+              <Text style={styles.heroEditionText}>Premium Edition v2.1.0</Text>
             </View>
             <View style={[styles.heroStatusChip, { backgroundColor: isKeyboardDefault ? 'rgba(0,214,143,0.12)' : 'rgba(255,176,32,0.12)' }]}>
               <View style={[styles.heroStatusDot, { backgroundColor: isKeyboardDefault ? palette.emerald : palette.orange }]} />
@@ -752,7 +918,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* Graphical Premium Keyboard Representation */}
           <View style={styles.kbIllustration}>
             <View style={styles.kbRow}>
               <View style={styles.kbKey} />
@@ -765,7 +930,7 @@ export default function App() {
             </View>
             <View style={styles.kbRow}>
               <View style={styles.kbKey} />
-              <View style={[styles.kbKey, { backgroundColor: palette.emerald, border: 0 }]} />
+              <View style={[styles.kbKey, { backgroundColor: palette.emerald }]} />
               <View style={styles.kbKey} />
               <View style={styles.kbKey} />
               <View style={styles.kbKey} />
@@ -774,12 +939,11 @@ export default function App() {
             <View style={[styles.kbRow, { paddingHorizontal: 12 }]}>
               <View style={[styles.kbKey, { flex: 1.3 }]} />
               <View style={[styles.kbKey, { flex: 4, backgroundColor: 'rgba(255,255,255,0.06)' }]} />
-              <View style={[styles.kbKey, { flex: 1.3, backgroundColor: palette.blue, border: 0 }]} />
+              <View style={[styles.kbKey, { flex: 1.3, backgroundColor: palette.blue }]} />
             </View>
           </View>
         </View>
 
-        {/* Quick Actions Grid */}
         <Text style={styles.gridSectionHeading}>Quick Actions</Text>
         <View style={styles.quickActionsContainer}>
           <TouchableOpacity
@@ -787,7 +951,7 @@ export default function App() {
             onPress={openKeyboardSettings}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(0, 214, 143, 0.12)' }]}>
-              <Text style={{ fontSize: 18, color: palette.emerald }}>🔌</Text>
+              <Icon name="power" size={20} color={palette.emerald} />
             </View>
             <Text style={styles.quickActionLabel}>Enable</Text>
           </TouchableOpacity>
@@ -797,7 +961,7 @@ export default function App() {
             onPress={selectKeyboard}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(79, 140, 255, 0.12)' }]}>
-              <Text style={{ fontSize: 18, color: palette.blue }}>⌨️</Text>
+              <Icon name="keyboard" size={20} color={palette.blue} />
             </View>
             <Text style={styles.quickActionLabel}>Open / Switch</Text>
           </TouchableOpacity>
@@ -811,7 +975,7 @@ export default function App() {
             }}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 176, 32, 0.12)' }]}>
-              <Text style={{ fontSize: 18, color: palette.orange }}>✍️</Text>
+              <Icon name="test" size={20} color={palette.orange} />
             </View>
             <Text style={styles.quickActionLabel}>Test Input</Text>
           </TouchableOpacity>
@@ -824,13 +988,12 @@ export default function App() {
             }}
           >
             <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(255, 92, 92, 0.12)' }]}>
-              <Text style={{ fontSize: 18, color: palette.red }}>⚙️</Text>
+              <Icon name="settings" size={20} color={palette.red} />
             </View>
             <Text style={styles.quickActionLabel}>Settings</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Dashboard Statistics Grid */}
         <Text style={styles.gridSectionHeading}>Dashboard Statistics</Text>
         <View style={styles.dashboardGrid}>
           <View style={styles.dashboardWidget}>
@@ -866,7 +1029,6 @@ export default function App() {
           </View>
         </View>
 
-        {/* Test interactive area */}
         <View style={styles.premiumCard}>
           <Text style={styles.premiumCardTitle}>Test Your Overhauled Keyboard</Text>
           <Text style={styles.premiumCardDesc}>
@@ -892,34 +1054,34 @@ export default function App() {
       {
         header: 'Appearance',
         items: [
-          { id: 'theme', title: 'Theme Store', subtitle: 'Change glow presets, accent colors, and background styles', symbol: '🎨' }
+          { id: 'theme', title: 'Theme Store', subtitle: 'Change glow presets, accent colors, and background styles', icon: 'theme' }
         ]
       },
       {
         header: 'Keyboard Settings',
         items: [
-          { id: 'keyboard', title: 'Height & Layout spacing', subtitle: 'Configure key heights, padding offsets, sound & vibrations', symbol: '⌨️' },
-          { id: 'gesture', title: 'Gesture Glide Typing', subtitle: 'Type by swiping paths across key overlays', symbol: '📐' }
+          { id: 'keyboard', title: 'Height & Layout spacing', subtitle: 'Configure key heights, padding offsets, sound & vibrations', icon: 'keyboard' },
+          { id: 'gesture', title: 'Gesture Glide Typing', subtitle: 'Type by swiping paths across key overlays', icon: 'gesture' }
         ]
       },
       {
         header: 'Text & Corrections',
         items: [
-          { id: 'typing', title: 'Typing & Corrections', subtitle: 'Configure auto-capitalizations, suggestions & corrections', symbol: '✍️' }
+          { id: 'typing', title: 'Typing & Corrections', subtitle: 'Configure auto-capitalizations, suggestions & corrections', icon: 'typing' }
         ]
       },
       {
         header: 'Clipboard Settings',
         items: [
-          { id: 'clipboard', title: 'Clipboard History logs', subtitle: 'Adjust item retention, pinned storage caps, and clipboard actions', symbol: '📋' }
+          { id: 'clipboard', title: 'Clipboard History logs', subtitle: 'Adjust item retention, pinned storage caps, and clipboard actions', icon: 'clipboard' }
         ]
       },
       {
         header: 'Advanced features',
         items: [
-          { id: 'language', title: 'Language Profiles', subtitle: 'Select active layouts and toggle phonetic indices', symbol: '🌐' },
-          { id: 'addons', title: 'Addons & Extension links', subtitle: 'Integrate real time translation and dictation tools', symbol: '🧩' },
-          { id: 'other', title: 'Advanced developer keys', subtitle: 'Manage configuration backups, data wipes, and defaults', symbol: '⚙️' }
+          { id: 'language', title: 'Language Profiles', subtitle: 'Select active layouts and toggle phonetic indices', icon: 'language' },
+          { id: 'addons', title: 'Addons & Extension links', subtitle: 'Integrate real time translation and dictation tools', icon: 'addons' },
+          { id: 'other', title: 'Advanced developer keys', subtitle: 'Manage configuration backups, data wipes, and defaults', icon: 'advanced' }
         ]
       }
     ];
@@ -941,14 +1103,14 @@ export default function App() {
                   >
                     <View style={styles.settingsRowContent}>
                       <View style={styles.settingsIconWrapper}>
-                        <Text style={{ fontSize: 18 }}>{sec.symbol}</Text>
+                        <Icon name={sec.icon} size={18} color={palette.text} />
                       </View>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.settingsRowTitle}>{sec.title}</Text>
                         <Text style={styles.settingsRowSubtitle}>{sec.subtitle}</Text>
                       </View>
                     </View>
-                    <Text style={styles.settingsChevron}>›</Text>
+                    <Icon name="arrow" size={20} color={palette.subtext} />
                   </TouchableOpacity>
                 );
               })}
@@ -962,7 +1124,6 @@ export default function App() {
   const renderAbout = () => {
     return (
       <ScrollView style={styles.scrollContainer} contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Large logo representation */}
         <View style={styles.aboutHeader}>
           <View style={styles.logoCircle}>
             <Text style={styles.logoText}>O</Text>
@@ -974,20 +1135,21 @@ export default function App() {
           </View>
         </View>
 
-        {/* Animated status chips row */}
         <View style={styles.chipsRow}>
           <View style={styles.statusChip}>
-            <Text style={styles.statusChipLabel}>🟢 Active</Text>
+            <Icon name="power" size={12} color={palette.emerald} />
+            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Active</Text>
           </View>
           <View style={styles.statusChip}>
-            <Text style={styles.statusChipLabel}>🔒 Secure</Text>
+            <Icon name="search" size={12} color={palette.blue} />
+            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Secure</Text>
           </View>
           <View style={styles.statusChip}>
-            <Text style={styles.statusChipLabel}>⚡ Fast</Text>
+            <Icon name="star" size={12} color={palette.orange} />
+            <Text style={[styles.statusChipLabel, { marginLeft: 6 }]}>Fast</Text>
           </View>
         </View>
 
-        {/* Feature Cards Grid */}
         <Text style={styles.gridSectionHeading}>Engine Specs</Text>
         <View style={styles.featuresContainer}>
           {[
@@ -1003,7 +1165,6 @@ export default function App() {
           ))}
         </View>
 
-        {/* Social Links Row */}
         <Text style={styles.gridSectionHeading}>Community</Text>
         <View style={styles.socialRow}>
           {[
@@ -1022,7 +1183,6 @@ export default function App() {
           ))}
         </View>
 
-        {/* Bottom Copyright in a glass container */}
         <View style={styles.glassCopyright}>
           <Text style={styles.copyrightText}>
             © 2026 NeoType Inc. All rights reserved. Registered flagship layout.
@@ -1036,20 +1196,18 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Main Tab Render */}
       <View style={{ flex: 1 }}>
         {activeTab === 'home' && renderHome()}
         {activeTab === 'settings' && renderSettings()}
         {activeTab === 'about' && renderAbout()}
       </View>
 
-      {/* Bottom Floating Navigation (Hidden when keyboard is active to avoid overlaps) */}
       {!isKeyboardVisible && (
         <View style={styles.floatingNavBar}>
           {[
-            { id: 'home', label: 'Home', icon: '🏠' },
-            { id: 'settings', label: 'Settings', icon: '⚙️' },
-            { id: 'about', label: 'About', icon: 'ℹ️' },
+            { id: 'home', label: 'Home', icon: 'home' },
+            { id: 'settings', label: 'Settings', icon: 'settings' },
+            { id: 'about', label: 'About', icon: 'about' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -1061,9 +1219,7 @@ export default function App() {
                   setActiveSection(null);
                 }}
               >
-                <Text style={[styles.floatingNavIcon, isActive && { color: palette.emerald }]}>
-                  {tab.icon}
-                </Text>
+                <Icon name={tab.icon} size={20} color={isActive ? palette.emerald : palette.subtext} />
                 <Text style={[styles.floatingNavLabel, isActive && styles.floatingNavLabelActive]}>
                   {tab.label}
                 </Text>
@@ -1093,7 +1249,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1F1F',
+    borderBottomColor: '#1C1C1E',
     backgroundColor: '#000000',
   },
   backHeaderArrow: {
@@ -1107,6 +1263,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.2,
+    marginLeft: 8,
   },
   sectionHeaderTitle: {
     fontSize: 28,
@@ -1118,25 +1275,25 @@ const styles = StyleSheet.create({
   },
   sectionHeaderDesc: {
     fontSize: 14,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 6,
     paddingHorizontal: 4,
     lineHeight: 20,
     marginBottom: 24,
   },
   sectionCardWrapper: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     padding: 16,
     marginBottom: 40,
   },
   heroCard: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     padding: 24,
     marginBottom: 28,
     overflow: 'hidden',
@@ -1163,7 +1320,7 @@ const styles = StyleSheet.create({
   },
   heroEditionText: {
     fontSize: 13,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 2,
   },
   heroStatusChip: {
@@ -1208,11 +1365,11 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   gridSectionHeading: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#A0A0A0',
+    color: '#8E8E93',
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
     marginBottom: 14,
     paddingLeft: 4,
   },
@@ -1224,10 +1381,10 @@ const styles = StyleSheet.create({
   },
   quickActionCard: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1255,16 +1412,16 @@ const styles = StyleSheet.create({
   },
   dashboardWidget: {
     width: '48%',
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     padding: 18,
   },
   widgetTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#A0A0A0',
+    color: '#8E8E93',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -1281,10 +1438,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   premiumCard: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     padding: 20,
     marginBottom: 30,
   },
@@ -1295,7 +1452,7 @@ const styles = StyleSheet.create({
   },
   premiumCardDesc: {
     fontSize: 12,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 6,
     lineHeight: 18,
   },
@@ -1303,7 +1460,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     color: '#FFFFFF',
     borderRadius: 16,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -1323,17 +1480,17 @@ const styles = StyleSheet.create({
   settingsGroupHeader: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#A0A0A0',
+    color: '#8E8E93',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 10,
     paddingLeft: 4,
   },
   settingsGroupCard: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     overflow: 'hidden',
   },
   settingsGroupRow: {
@@ -1345,7 +1502,7 @@ const styles = StyleSheet.create({
   },
   settingsGroupRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1F1F',
+    borderBottomColor: '#1C1C1E',
   },
   settingsRowContent: {
     flexDirection: 'row',
@@ -1368,7 +1525,7 @@ const styles = StyleSheet.create({
   },
   settingsRowSubtitle: {
     fontSize: 11,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 2,
     lineHeight: 15,
   },
@@ -1414,9 +1571,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   versionBadge: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1425,7 +1582,7 @@ const styles = StyleSheet.create({
   versionBadgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#A0A0A0',
+    color: '#8E8E93',
   },
   chipsRow: {
     flexDirection: 'row',
@@ -1434,12 +1591,14 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   statusChip: {
-    backgroundColor: '#121212',
-    borderColor: '#1F1F1F',
+    backgroundColor: '#0D0D0D',
+    borderColor: '#1C1C1E',
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   statusChipLabel: {
     fontSize: 12,
@@ -1451,10 +1610,10 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   featureCard: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     padding: 18,
   },
   featureCardTitle: {
@@ -1464,7 +1623,7 @@ const styles = StyleSheet.create({
   },
   featureCardDesc: {
     fontSize: 12,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 4,
     lineHeight: 18,
   },
@@ -1477,10 +1636,10 @@ const styles = StyleSheet.create({
   socialButton: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
     paddingVertical: 14,
     alignItems: 'center',
   },
@@ -1511,7 +1670,7 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     height: 64,
-    backgroundColor: 'rgba(18, 18, 18, 0.85)',
+    backgroundColor: 'rgba(13, 13, 13, 0.88)',
     borderRadius: 32,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -1536,12 +1695,12 @@ const styles = StyleSheet.create({
   },
   floatingNavIcon: {
     fontSize: 18,
-    color: '#A0A0A0',
+    color: '#8E8E93',
   },
   floatingNavLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 4,
   },
   floatingNavLabelActive: {
@@ -1554,7 +1713,7 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 6,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1F1F',
+    borderBottomColor: '#1C1C1E',
   },
   customRadio: {
     width: 20,
@@ -1605,7 +1764,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1A1A1A',
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
   },
   wallpaperTitle: {
     color: '#FFFFFF',
@@ -1613,7 +1772,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   wallpaperSubtitle: {
-    color: '#A0A0A0',
+    color: '#8E8E93',
     fontSize: 11,
     marginTop: 4,
     lineHeight: 16,
@@ -1636,7 +1795,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1F1F',
+    borderBottomColor: '#1C1C1E',
   },
   spacingSliderGroup: {
     marginTop: 20,
@@ -1648,7 +1807,7 @@ const styles = StyleSheet.create({
   },
   sliderDesc: {
     fontSize: 11,
-    color: '#A0A0A0',
+    color: '#8E8E93',
     marginTop: 2,
   },
   tabsSelectorRow: {
@@ -1667,12 +1826,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   tabSelectorCellActive: {
-    backgroundColor: '#121212',
+    backgroundColor: '#0D0D0D',
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
   },
   tabSelectorCellText: {
-    color: '#A0A0A0',
+    color: '#8E8E93',
     fontWeight: '700',
     fontSize: 11,
   },
@@ -1691,7 +1850,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#1F1F1F',
+    borderColor: '#1C1C1E',
   },
   quantityBtnText: {
     color: '#FFFFFF',
