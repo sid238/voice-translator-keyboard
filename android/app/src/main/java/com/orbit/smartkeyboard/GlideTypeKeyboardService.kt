@@ -31,6 +31,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Paint
 
@@ -125,6 +126,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // Camera OCR fields
     private var cameraProvider: ProcessCameraProvider? = null
+    private var ocrCamera: androidx.camera.core.Camera? = null
     private var cameraExecutor: java.util.concurrent.ExecutorService? = null
     private var ocrPreviewView: androidx.camera.view.PreviewView? = null
     private var lastScannedText = ""
@@ -2893,341 +2895,188 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private fun createClipboardLayout(): View {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#000000"))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
 
-        val clipToolbar = LinearLayout(this).apply {
+        val pinnedCount = clipboardHistory.count { it.isPinned }
+        val todayCount = clipboardHistory.count {
+            val c1 = java.util.Calendar.getInstance()
+            val c2 = java.util.Calendar.getInstance().apply { timeInMillis = it.timestamp }
+            c1.get(java.util.Calendar.DAY_OF_YEAR) == c2.get(java.util.Calendar.DAY_OF_YEAR) &&
+            c1.get(java.util.Calendar.YEAR) == c2.get(java.util.Calendar.YEAR)
+        }
+
+        val statsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(35)
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-
-        val clearAllBtn = Button(this).apply {
-            text = "Clear All"
-            setTextColor(Color.parseColor("#FF1744"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            setPadding(dpToPx(8), 0, dpToPx(8), 0)
-            background = createKeyDrawableWithRadius(Color.parseColor("#2C1E21"), 4)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ).apply {
-                setMargins(0, 0, dpToPx(8), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                clearClipboard(false)
-            }
-        }
-        clipToolbar.addView(clearAllBtn)
-
-        val clearUnpinnedBtn = Button(this).apply {
-            text = "Clear Unpinned"
-            setTextColor(Color.parseColor("#FF8F00"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            setPadding(dpToPx(8), 0, dpToPx(8), 0)
-            background = createKeyDrawableWithRadius(Color.parseColor("#2C261E"), 4)
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setOnClickListener {
-                vibrateClick()
-                clearClipboard(true)
-            }
-        }
-        clipToolbar.addView(clearUnpinnedBtn)
-
-        val backspaceBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#2E2E2E"), 4)
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(40), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                setMargins(dpToPx(8), 0, 0, 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                playClick(android.view.KeyEvent.KEYCODE_DEL)
-                currentInputConnection?.let { ic ->
-                    ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                    ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                }
-            }
-        }
-        val backspaceIcon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_backspace)
-            setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+        for (stat in listOf("📌 $pinnedCount Pinned", "📋 $todayCount Today", "💾 ${clipboardHistory.size} Total")) {
+            statsRow.addView(TextView(this).apply {
+                text = stat
+                setTextColor(Color.parseColor("#CCFFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 gravity = Gravity.CENTER
-            }
+                setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                background = createKeyDrawableWithRadius(Color.parseColor("#222244"), keyRadiusDp)
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(28), 1f).apply {
+                    setMargins(dpToPx(3), 0, dpToPx(3), 0)
+                }
+            })
         }
-        backspaceBtn.addView(backspaceIcon)
-        clipToolbar.addView(backspaceBtn)
+        rootLayout.addView(statsRow)
 
-        rootLayout.addView(clipToolbar)
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), 0, dpToPx(8), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        for ((name, color) in listOf("Delete All" to "#FF4444", "Clear Recent" to "#FF8F00", "Pinned Only" to themeAccentColor)) {
+            actionRow.addView(TextView(this).apply {
+                text = name
+                setTextColor(Color.parseColor(color))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor(color + "22"), keyRadiusDp)
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(26), 1f).apply {
+                    setMargins(dpToPx(3), 0, dpToPx(3), 0)
+                }
+                setOnClickListener { vibrateClick()
+                    when (name) {
+                        "Delete All" -> clearClipboard(false)
+                        "Clear Recent" -> clearClipboard(true)
+                        "Pinned Only" -> { clipboardHistory.removeAll { !it.isPinned }; savePreferences(); updateKeyboardLayout() }
+                    }
+                }
+            })
+        }
+        rootLayout.addView(actionRow)
 
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0, 1f
+            )
+        }
         val listLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(4))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
 
-        val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1.0f
-            )
-            addView(listLayout)
-        }
-
         if (clipboardHistory.isEmpty()) {
-            val emptyText = TextView(this).apply {
+            listLayout.addView(TextView(this).apply {
                 text = "Clipboard is empty"
-                setTextColor(Color.GRAY)
+                setTextColor(Color.parseColor("#66FFFFFF"))
                 gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-                layoutParams = LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    dpToPx(100)
-                )
-            }
-            listLayout.addView(emptyText)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(100))
+            })
         } else {
             for (item in clipboardHistory) {
-                val container = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                }
-
-                if (clipboardTimelineEnabled) {
-                    val timelineIndicator = FrameLayout(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(32), ViewGroup.LayoutParams.MATCH_PARENT)
-                    }
-                    val line = View(this).apply {
-                        background = GradientDrawable().apply {
-                            setColor(Color.parseColor(if (item.isPinned) themeAccentColor else if (themeTextColor == Color.BLACK) "#D2D5DB" else "#33FFFFFF"))
-                        }
-                        layoutParams = FrameLayout.LayoutParams(dpToPx(2), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                            gravity = Gravity.CENTER_HORIZONTAL
-                        }
-                    }
-                    val dot = View(this).apply {
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(Color.parseColor(if (item.isPinned) themeAccentColor else if (themeTextColor == Color.BLACK) "#8E8E93" else "#88FFFFFF"))
-                        }
-                        layoutParams = FrameLayout.LayoutParams(dpToPx(10), dpToPx(10)).apply {
-                            gravity = Gravity.CENTER
-                        }
-                    }
-                    timelineIndicator.addView(line)
-                    timelineIndicator.addView(dot)
-                    container.addView(timelineIndicator)
-                }
-
-                val itemRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(Color.parseColor(
-                            if (item.isPinned) {
-                                if (themeTextColor == Color.BLACK) "#F2E6FF" else "#2E1A47"
-                            } else {
-                                if (themeTextColor == Color.BLACK) "#FFFFFF" else "#1A1A1A"
-                            }
-                        ))
-                        setStroke(2, Color.parseColor(
-                            if (item.isPinned) {
-                                themeAccentColor
-                            } else {
-                                if (themeTextColor == Color.BLACK) "#E5E5EA" else "#252525"
-                            }
-                        ))
-                        cornerRadius = dpToPx(6).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        if (clipboardTimelineEnabled) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        if (clipboardTimelineEnabled) 1.0f else 0.0f
-                    ).apply {
-                        setMargins(dpToPx(6), dpToPx(3), dpToPx(6), dpToPx(3))
-                    }
-                }
-
                 val isImage = item.imageUri != null
-                
-                // Vertical container for content & relative time meta
-                val textAndMetaLayout = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1.0f
-                    ).apply {
-                        setMargins(0, 0, dpToPx(12), 0)
-                    }
+                val txt = item.text
+                val isUrl = android.util.Patterns.WEB_URL.matcher(txt).matches()
+                val isEmail = android.util.Patterns.EMAIL_ADDRESS.matcher(txt).matches()
+                val typeBadge = when {
+                    isUrl -> "URL"; isEmail -> "Email"; isImage -> "Image"
+                    txt.matches(Regex("^\\d{4,}$")) -> "OTP"
+                    txt.matches(Regex(".*\\b(code|def|class|fun|val|var|int|String)\\b.*")) -> "Code"
+                    else -> "Text"
+                }
+                val badgeColor = when (typeBadge) {
+                    "URL" -> "#4F8CFF"; "Email" -> "#8B5CF6"; "Image" -> "#00D68F"
+                    "OTP" -> "#FF6B00"; "Code" -> "#FFD600"; else -> "#66FFFFFF"
                 }
 
-                val bodyLayout = LinearLayout(this).apply {
+                val card = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
+                    setPadding(dpToPx(12), dpToPx(10), dpToPx(8), dpToPx(10))
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(dpToPx(4), dpToPx(3), dpToPx(4), dpToPx(3))
+                    }
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpToPx(keyRadiusDp).toFloat()
+                        setColor(Color.parseColor(if (item.isPinned) "#1A1A3E" else "#111122"))
+                        if (item.isPinned) setStroke(dpToPx(1), Color.parseColor(themeAccentColor + "66"))
+                    }
                 }
 
                 if (isImage) {
-                    val imageView = ImageView(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(60), dpToPx(40)).apply {
-                            setMargins(0, 0, dpToPx(8), 0)
-                        }
+                    card.addView(ImageView(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply { setMargins(0, 0, dpToPx(8), 0) }
                         scaleType = ImageView.ScaleType.CENTER_CROP
-                        try {
-                            setImageURI(android.net.Uri.parse(item.imageUri))
-                        } catch (e: Exception) {
-                            setImageResource(R.drawable.ic_clipboard)
-                        }
-                        setOnClickListener {
-                            vibrateClick()
-                            pasteClipboardImage(item)
-                        }
-                    }
-                    bodyLayout.addView(imageView)
+                        try { setImageURI(android.net.Uri.parse(item.imageUri)) } catch (_: Exception) { setImageResource(R.drawable.ic_clipboard) }
+                    })
                 }
 
-                val textToCheck = item.text
-                val isUrl = textToCheck.startsWith("http://") || textToCheck.startsWith("https://") || android.util.Patterns.WEB_URL.matcher(textToCheck).matches()
-
-                val clipTextView = TextView(this).apply {
-                    text = if (isImage) "Copied Image" else item.text
-                    setTextColor(if (isUrl) Color.parseColor("#3498db") else themeTextColor)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                    maxLines = 2
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    layoutParams = LinearLayout.LayoutParams(
-                        0,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        1.0f
-                    )
-                    setOnClickListener {
-                        vibrateClick()
-                        if (isImage) {
-                            pasteClipboardImage(item)
-                        } else {
-                            currentInputConnection?.commitText(item.text, 1)
-                        }
+                val textCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(0, 0, dpToPx(8), 0)
                     }
                 }
-                bodyLayout.addView(clipTextView)
-                textAndMetaLayout.addView(bodyLayout)
+                textCol.addView(TextView(this).apply {
+                    text = typeBadge; setTextColor(Color.parseColor(badgeColor))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f); setTypeface(null, android.graphics.Typeface.BOLD)
+                    setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2))
+                    background = createKeyDrawableWithRadius(Color.parseColor(badgeColor + "22"), 8)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                })
+                textCol.addView(TextView(this).apply {
+                    text = if (isImage) "Copied Image" else item.text; setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(2), 0, 0) }
+                    setOnClickListener { vibrateClick(); if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(item.text, 1) }
+                })
+                textCol.addView(TextView(this).apply {
+                    text = android.text.format.DateUtils.getRelativeTimeSpanString(item.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
+                    setTextColor(Color.parseColor("#66FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                })
+                card.addView(textCol)
 
-                val timeStr = android.text.format.DateUtils.getRelativeTimeSpanString(
-                    item.timestamp,
-                    System.currentTimeMillis(),
-                    android.text.format.DateUtils.MINUTE_IN_MILLIS
-                ).toString()
-
-                val timeTextView = TextView(this).apply {
-                    text = timeStr
-                    setTextColor(Color.GRAY)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                    layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(0, dpToPx(2), 0, 0)
-                    }
-                }
-                textAndMetaLayout.addView(timeTextView)
-
-                itemRow.addView(textAndMetaLayout)
-
-                if (isUrl) {
-                    val browserIcon = ImageView(this).apply {
-                        setImageResource(R.drawable.ic_browser)
-                        setColorFilter(Color.parseColor("#3498db"))
-                        background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
-                        isClickable = true
-                        isFocusable = true
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(35)).apply {
-                            setMargins(0, 0, dpToPx(6), 0)
-                        }
-                        setOnClickListener {
-                            vibrateClick()
-                            try {
-                                val urlStr = if (!textToCheck.startsWith("http://") && !textToCheck.startsWith("https://")) {
-                                    "https://" + textToCheck
-                                } else {
-                                    textToCheck
-                                }
-                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(urlStr)).apply {
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                startActivity(intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(this@GlideTypeKeyboardService, "Unable to open link", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                    itemRow.addView(browserIcon)
-                }
-
-                val pinBtn = ImageView(this).apply {
-                    setImageResource(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin)
-                    setColorFilter(if (item.isPinned) Color.parseColor(themeAccentColor) else themeTextColor)
-                    background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
-                        setMargins(dpToPx(1), 0, dpToPx(7), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        handler.postDelayed({ togglePinItem(item) }, 100)
-                    }
-                }
-                itemRow.addView(pinBtn)
-
-                val delBtn = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_delete)
-                    setColorFilter(Color.parseColor("#FF1744"))
-                    background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
-                        setMargins(0, 0, 0, 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        deleteClipboardItem(item)
-                    }
-                }
-                itemRow.addView(delBtn)
-
-                container.addView(itemRow)
-                listLayout.addView(container)
+                card.addView(createClipActionIcon(R.drawable.ic_copy, "#FFFFFF") {
+                    (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("clipboard", item.text))
+                    Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show()
+                })
+                card.addView(createClipActionIcon(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (item.isPinned) themeAccentColor else "#FFFFFF") { togglePinItem(item) })
+                card.addView(createClipActionIcon(R.drawable.ic_delete, "#FF4444") { deleteClipboardItem(item) })
+                listLayout.addView(card)
             }
         }
 
+        scrollView.addView(listLayout)
         rootLayout.addView(scrollView)
+
         return rootLayout
+    }
+
+    private fun createClipActionIcon(iconRes: Int, color: String, onClick: () -> Unit): View {
+        return ImageView(this).apply {
+            setImageResource(iconRes); setColorFilter(Color.parseColor(color))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply { setMargins(dpToPx(1), 0, dpToPx(1), 0) }
+            setOnClickListener { vibrateClick(); onClick() }
+        }
     }
 
     private fun playClick(keyCode: Int) {
@@ -4622,7 +4471,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         }
                         "Translate" -> {
                             isTranslationActive = true
-                            translationSourceField?.setText(text)
+                            translationInputField?.setText(text)
                             updateKeyboardLayout()
                         }
                         "Summarize" -> {
@@ -4780,15 +4629,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun toggleOcrFlash() {
         try {
-            cameraProvider?.let { provider ->
-                provider.cameraInfo?.let { info ->
-                    val cameraControl = info.cameraControl
-                    if (cameraControl != null) {
-                        isOcrFlashOn = !isOcrFlashOn
-                        cameraControl.enableTorch(isOcrFlashOn)
-                        Toast.makeText(this, if (isOcrFlashOn) "Flash on" else "Flash off", Toast.LENGTH_SHORT).show()
-                    }
-                }
+            val cam = ocrCamera
+            if (cam != null) {
+                isOcrFlashOn = !isOcrFlashOn
+                cam.cameraControl.enableTorch(isOcrFlashOn)
+                Toast.makeText(this, if (isOcrFlashOn) "Flash on" else "Flash off", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {}
     }
@@ -4818,7 +4663,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 cameraProvider?.unbindAll()
-                cameraProvider?.bindToLifecycle(
+                ocrCamera = cameraProvider?.bindToLifecycle(
                     this@GlideTypeKeyboardService,
                     cameraSelector,
                     preview,
@@ -5015,6 +4860,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         try {
             cameraProvider?.unbindAll()
             cameraProvider = null
+            ocrCamera = null
             cameraExecutor?.shutdown()
             cameraExecutor = null
             ocrPreviewView = null
