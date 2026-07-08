@@ -852,6 +852,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun updateKeyboardLayoutInternal() {
         if (!::keyboardContainer.isInitialized) return
+        val screenWidth = resources.displayMetrics.widthPixels
+        val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
         try {
             keyboardContainer.removeAllViews()
 
@@ -871,9 +873,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
             keyboardContainer.clipChildren = false
             keyboardContainer.clipToPadding = false
-
-            val screenWidth = resources.displayMetrics.widthPixels
-            val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
             val mainLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 clipChildren = false
