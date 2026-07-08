@@ -50,7 +50,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.Barcode
 
 class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
@@ -4391,6 +4390,21 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private var qrDetectedText = ""
     private var ocrStatusLabel: TextView? = null
+    private val GALLERY_REQUEST_CODE = 9001
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == GALLERY_REQUEST_CODE && data?.data != null) {
+            try {
+                val uri = data.data!!
+                val bitmap = android.provider.MediaStore.Images.Media.getBitmap(contentResolver, uri)
+                processImageForOcr(bitmap)
+                ocrStatusLabel?.text = "Gallery image processed"
+            } catch (e: Exception) {
+                ocrStatusLabel?.text = "Gallery error: ${e.message}"
+            }
+        }
+    }
 
     private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView, qrLabel: TextView) {
         ocrStatusLabel = statusLabel
@@ -4432,9 +4446,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     }
                                 }
                             }
-                            .addOnCompleteListener {
-                                imageProxy.close()
-                            }
                         barcodeScanner.process(image)
                             .addOnSuccessListener { barcodes ->
                                 for (barcode in barcodes) {
@@ -4442,16 +4453,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     if (rawValue != qrDetectedText) {
                                         qrDetectedText = rawValue
                                         val typeName = when (barcode.valueType) {
-                                            Barcode.TYPE_URL -> "URL"
-                                            Barcode.TYPE_TEXT -> "Text"
-                                            Barcode.TYPE_CONTACT_INFO -> "Contact"
-                                            Barcode.TYPE_EMAIL -> "Email"
-                                            Barcode.TYPE_PHONE -> "Phone"
-                                            Barcode.TYPE_SMS -> "SMS"
-                                            Barcode.TYPE_WIFI -> "WiFi"
-                                            Barcode.TYPE_GEO -> "Geo"
-                                            Barcode.TYPE_CALENDAR_EVENT -> "Event"
-                                            Barcode.TYPE_DRIVERS_LICENSE -> "License"
+                                            1 -> "URL"
+                                            2 -> "Text"
+                                            3 -> "Contact"
+                                            4 -> "Email"
+                                            5 -> "Phone"
+                                            6 -> "SMS"
+                                            7 -> "WiFi"
+                                            8 -> "Geo"
+                                            9 -> "Event"
+                                            10 -> "License"
                                             else -> "QR"
                                         }
                                         handler.post {
@@ -4462,6 +4473,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     }
                                 }
                             }
+                            .addOnCompleteListener { imageProxy.close() }
                     } else {
                         imageProxy.close()
                     }
@@ -4487,45 +4499,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun openGalleryForOcr() {
         try {
-            val intent = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                 type = "image/*"
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(intent)
-            handler.postDelayed({
-                checkAndProcessGalleryImage()
-            }, 500)
-            Toast.makeText(this, "Select an image from your gallery", Toast.LENGTH_SHORT).show()
+            startActivityForResult(intent, GALLERY_REQUEST_CODE)
+            Toast.makeText(this, "Select an image for OCR", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             ocrStatusLabel?.text = "Gallery: ${e.message}"
-        }
-    }
-
-    private fun checkAndProcessGalleryImage() {
-        try {
-            val cursor = contentResolver.query(
-                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                null, null, null,
-                android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC LIMIT 1"
-            )
-            cursor?.use { c ->
-                if (c.moveToFirst()) {
-                    val idx = c.getColumnIndex(android.provider.MediaStore.Images.Media.DATA)
-                    if (idx >= 0) {
-                        val path = c.getString(idx)
-                        if (path != null) {
-                            val bitmap = android.graphics.BitmapFactory.decodeFile(path)
-                            if (bitmap != null) {
-                                processImageForOcr(bitmap)
-                                ocrStatusLabel?.text = "Image processed for OCR"
-                                return
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            ocrStatusLabel?.text = "Gallery read error"
         }
     }
 
