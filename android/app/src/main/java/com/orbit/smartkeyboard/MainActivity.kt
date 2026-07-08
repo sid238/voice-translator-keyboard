@@ -33,10 +33,19 @@ class MainActivity : ReactActivity() {
 
   private fun checkAndRequestPermissions() {
     val intent = intent
-    if (intent != null && intent.getBooleanExtra("request_mic", false)) {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-          requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+    if (intent != null) {
+      if (intent.getBooleanExtra("request_mic", false)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
+          }
+        }
+      }
+      if (intent.getBooleanExtra("request_camera", false)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+          if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 102)
+          }
         }
       }
     }

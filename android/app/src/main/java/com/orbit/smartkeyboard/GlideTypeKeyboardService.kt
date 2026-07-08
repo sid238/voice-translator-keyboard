@@ -38,7 +38,25 @@ import java.io.OutputStreamWriter
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class GlideTypeKeyboardService : InputMethodService() {
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.core.content.ContextCompat
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.lifecycle.ProcessCameraProvider
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+
+class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
+
+    private val lifecycleRegistry = LifecycleRegistry(this)
+
+    override fun getLifecycle(): Lifecycle {
+        return lifecycleRegistry
+    }
 
     private lateinit var keyboardContainer: FrameLayout
     private var currentViewMode = ViewMode.QWERTY
@@ -88,6 +106,20 @@ class GlideTypeKeyboardService : InputMethodService() {
     private var themeSpecialKeyBg = "#2E2E2E"
     private var themeRegularKeyBg = "#1F1F1F"
     private var themeToolbarBg = "#1A1A1A"
+    private var themeTextColor = Color.WHITE
+    private var themeHintColor = "#7AFFFFFF"
+
+    // Effects & Timeline & OCR settings
+    private var keyboardEffect = "none"
+    private var keyboardEffectsView: KeyboardEffectsView? = null
+    private var clipboardTimelineEnabled = false
+    private var activeKeyboardArea: FrameLayout? = null
+
+    // Camera OCR fields
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var cameraExecutor: java.util.concurrent.ExecutorService? = null
+    private var ocrPreviewView: androidx.camera.view.PreviewView? = null
+    private var lastScannedText = ""
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -135,7 +167,7 @@ class GlideTypeKeyboardService : InputMethodService() {
     }
 
     enum class ViewMode {
-        QWERTY, SYMBOLS, EMOJIS, CLIPBOARD, PC_SHORTCUTS, HINDI
+        QWERTY, SYMBOLS, EMOJIS, CLIPBOARD, PC_SHORTCUTS, HINDI, OCR
     }
 
     data class ClipboardItem(
@@ -256,12 +288,15 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         loadPreferences()
         setupClipboardListener()
     }
 
     override fun onDestroy() {
         speechRecognizer?.destroy()
+        stopOcrCamera()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
     }
 
@@ -288,6 +323,8 @@ class GlideTypeKeyboardService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         currentViewMode = ViewMode.QWERTY
         isTranslationActive = false
         isHindiPage2 = false
@@ -296,6 +333,13 @@ class GlideTypeKeyboardService : InputMethodService() {
         loadPreferences()
         fetchSystemClipboard()
         updateKeyboardLayout()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        stopOcrCamera()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
 
     private fun loadPreferences() {
@@ -317,6 +361,9 @@ class GlideTypeKeyboardService : InputMethodService() {
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
         keySpacingDp = prefs.getInt("key_spacing_dp", 4)
+
+        keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
+        clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
 
         val langsStr = prefs.getString("selected_languages", "en") ?: "en"
         selectedLanguages.clear()
@@ -352,6 +399,8 @@ class GlideTypeKeyboardService : InputMethodService() {
         }
 
         // Set theme colors based on loaded settings
+        themeTextColor = Color.WHITE
+        themeHintColor = "#7AFFFFFF"
         when (themeName) {
             "purple" -> {
                 themeBgColor = "#121212"
@@ -387,6 +436,37 @@ class GlideTypeKeyboardService : InputMethodService() {
                 themeSpecialKeyBg = "#1B4332"
                 themeRegularKeyBg = "#0F2F20"
                 themeToolbarBg = "#0B251A"
+            }
+            "dynamic" -> {
+                val isDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                val dynamicAccent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    try {
+                        val color = resources.getColor(android.R.color.system_accent1_500, theme)
+                        String.format("#%06X", 0xFFFFFF and color)
+                    } catch (e: Exception) {
+                        "#00D68F"
+                    }
+                } else {
+                    "#00D68F"
+                }
+
+                if (isDark) {
+                    themeBgColor = "#121212"
+                    themeAccentColor = dynamicAccent
+                    themeSpecialKeyBg = "#2E2E2E"
+                    themeRegularKeyBg = "#1F1F1F"
+                    themeToolbarBg = "#1A1A1A"
+                    themeTextColor = Color.WHITE
+                    themeHintColor = "#7AFFFFFF"
+                } else {
+                    themeBgColor = "#F9F9F9"
+                    themeAccentColor = dynamicAccent
+                    themeSpecialKeyBg = "#D2D5DB"
+                    themeRegularKeyBg = "#FFFFFF"
+                    themeToolbarBg = "#E5E5EA"
+                    themeTextColor = Color.BLACK
+                    themeHintColor = "#7A000000"
+                }
             }
         }
 
@@ -720,6 +800,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                 1.0f
             )
         }
+        activeKeyboardArea = keyboardArea
 
         val keysLayout = when (currentViewMode) {
             ViewMode.QWERTY -> createQwertyLayout()
@@ -728,8 +809,24 @@ class GlideTypeKeyboardService : InputMethodService() {
             ViewMode.CLIPBOARD -> createClipboardLayout()
             ViewMode.PC_SHORTCUTS -> createPcShortcutsLayout()
             ViewMode.HINDI -> createHindiLayout()
+            ViewMode.OCR -> createOcrLayout()
         }
         keyboardArea.addView(keysLayout)
+
+        // Initialize and add KeyboardEffectsView
+        if (keyboardEffect != "none") {
+            val effectsView = KeyboardEffectsView(this).apply {
+                setEffectType(keyboardEffect)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+            keyboardArea.addView(effectsView)
+            keyboardEffectsView = effectsView
+        } else {
+            keyboardEffectsView = null
+        }
 
         val gestureView = if (currentViewMode == ViewMode.QWERTY && gestureEnabled) {
             GestureDrawingView(this, themeAccentColor).apply {
@@ -1370,6 +1467,31 @@ class GlideTypeKeyboardService : InputMethodService() {
                     buttonsContainer.addView(micBtn)
                 }
 
+                // Camera OCR Button
+                val cameraActive = currentViewMode == ViewMode.OCR
+                val cameraBgColor = if (cameraActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                val cameraBtn = FrameLayout(this).apply {
+                    background = createKeyDrawable(cameraBgColor, dpToPx(6))
+                    isClickable = true
+                    isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
+                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                    }
+                    setOnClickListener {
+                        vibrateClick()
+                        toggleOcrMode()
+                    }
+                }
+                val cameraIcon = ImageView(this).apply {
+                    setImageResource(R.drawable.ic_camera)
+                    setColorFilter(themeTextColor)
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
+                        gravity = Gravity.CENTER
+                    }
+                }
+                cameraBtn.addView(cameraIcon)
+                buttonsContainer.addView(cameraBtn)
+
                 // Font Changer Button immediately next to the mic button
                 val fontActive = currentKeyboardFont != KeyboardFont.NORMAL
                 val fontBgColor = if (fontActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
@@ -1632,7 +1754,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     weight
                 ).apply {
-                    setMargins(dpToPx(keySpacingDp), dpToPx(6), dpToPx(keySpacingDp), dpToPx(6))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(2), dpToPx(keySpacingDp), dpToPx(2))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
@@ -1669,7 +1791,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                         }
                         if (iconRes != 0) {
                             setImageResource(iconRes)
-                            setColorFilter(Color.WHITE)
+                            setColorFilter(themeTextColor)
                         }
                         val iconSize = if (key.lowercase() == "shift") {
                             if (isShifted || isCapsLock) {
@@ -1680,6 +1802,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                         } else {
                             if (isLandscape) 24 else 22
                         }
+                        isClickable = false
+                        isFocusable = false
                         layoutParams = RelativeLayout.LayoutParams(
                             dpToPx(iconSize),
                             dpToPx(iconSize)
@@ -1694,7 +1818,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             "spacebar" -> if (currentViewMode == ViewMode.HINDI) "हिन्दी" else "English"
                             else -> key
                         }
-                        setTextColor(Color.WHITE)
+                        setTextColor(themeTextColor)
                         val isSingleChar = text.length == 1
                         val textSize = if (isSingleChar) {
                             if (isLandscape) 22f else 20f
@@ -1704,6 +1828,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
                         setTypeface(null, android.graphics.Typeface.BOLD)
                         gravity = Gravity.CENTER
+                        isClickable = false
+                        isFocusable = false
                         layoutParams = RelativeLayout.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1718,9 +1844,11 @@ class GlideTypeKeyboardService : InputMethodService() {
                 if (hint != null) {
                     val hintTextView = TextView(context).apply {
                         text = hint
-                        setTextColor(Color.parseColor("#7AFFFFFF"))
+                        setTextColor(Color.parseColor(themeHintColor))
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                         gravity = Gravity.CENTER
+                        isClickable = false
+                        isFocusable = false
                         layoutParams = RelativeLayout.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -1740,6 +1868,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             MotionEvent.ACTION_DOWN -> {
                                 vibrateClick()
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
+                                triggerKeyEffect(v, event)
                                 if (isTranslationActive && translationInputField != null && translationInputField!!.isFocused) {
                                     val et = translationInputField!!
                                     val start = et.selectionStart
@@ -1821,6 +1950,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 dragStartY = event.rawY
                                 v.isPressed = true
                                 handler.postDelayed(spaceLongPressRunnableLocal, 1500)
+                                triggerKeyEffect(v, event)
                             }
                             MotionEvent.ACTION_MOVE -> {
                                 val deltaX = event.rawX - dragStartX
@@ -1831,6 +1961,13 @@ class GlideTypeKeyboardService : InputMethodService() {
                                     vibrateClick()
                                     switchToNextLanguage()
                                 }
+                                val location = IntArray(2)
+                                v.getLocationOnScreen(location)
+                                val keyboardAreaLoc = IntArray(2)
+                                keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                                val relativeX = location[0] - keyboardAreaLoc[0] + event.x
+                                val relativeY = location[1] - keyboardAreaLoc[1] + event.y
+                                keyboardEffectsView?.addTrailPoint(relativeX, relativeY)
                             }
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(spaceLongPressRunnableLocal)
@@ -1867,6 +2004,16 @@ class GlideTypeKeyboardService : InputMethodService() {
                                 v.isPressed = true
                                 showKeyPreview(v, key)
                                 handler.postDelayed(keyLongPressRunnable, longPressDelayMs.toLong())
+                                triggerKeyEffect(v, event)
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                val location = IntArray(2)
+                                v.getLocationOnScreen(location)
+                                val keyboardAreaLoc = IntArray(2)
+                                keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                                val relativeX = location[0] - keyboardAreaLoc[0] + event.x
+                                val relativeY = location[1] - keyboardAreaLoc[1] + event.y
+                                keyboardEffectsView?.addTrailPoint(relativeX, relativeY)
                             }
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(keyLongPressRunnable)
@@ -3017,26 +3164,76 @@ class GlideTypeKeyboardService : InputMethodService() {
             listLayout.addView(emptyText)
         } else {
             for (item in clipboardHistory) {
+                val container = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                }
+
+                if (clipboardTimelineEnabled) {
+                    val timelineIndicator = FrameLayout(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(32), ViewGroup.LayoutParams.MATCH_PARENT)
+                    }
+                    val line = View(this).apply {
+                        background = GradientDrawable().apply {
+                            setColor(Color.parseColor(if (item.isPinned) themeAccentColor else if (themeTextColor == Color.BLACK) "#D2D5DB" else "#33FFFFFF"))
+                        }
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(2), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                            gravity = Gravity.CENTER_HORIZONTAL
+                        }
+                    }
+                    val dot = View(this).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.parseColor(if (item.isPinned) themeAccentColor else if (themeTextColor == Color.BLACK) "#8E8E93" else "#88FFFFFF"))
+                        }
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(10), dpToPx(10)).apply {
+                            gravity = Gravity.CENTER
+                        }
+                    }
+                    timelineIndicator.addView(line)
+                    timelineIndicator.addView(dot)
+                    container.addView(timelineIndicator)
+                }
+
                 val itemRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(Color.parseColor(if (item.isPinned) "#2E1A47" else "#1A1A1A"))
-                        setStroke(2, Color.parseColor(if (item.isPinned) themeAccentColor else "#252525"))
+                        setColor(Color.parseColor(
+                            if (item.isPinned) {
+                                if (themeTextColor == Color.BLACK) "#F2E6FF" else "#2E1A47"
+                            } else {
+                                if (themeTextColor == Color.BLACK) "#FFFFFF" else "#1A1A1A"
+                            }
+                        ))
+                        setStroke(2, Color.parseColor(
+                            if (item.isPinned) {
+                                themeAccentColor
+                            } else {
+                                if (themeTextColor == Color.BLACK) "#E5E5EA" else "#252525"
+                            }
+                        ))
                         cornerRadius = dpToPx(6).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
+                        if (clipboardTimelineEnabled) 0 else ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        if (clipboardTimelineEnabled) 1.0f else 0.0f
                     ).apply {
                         setMargins(dpToPx(6), dpToPx(3), dpToPx(6), dpToPx(3))
                     }
                 }
 
                 val isImage = item.imageUri != null
-                val contentLayout = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
+                
+                // Vertical container for content & relative time meta
+                val textAndMetaLayout = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(
                         0,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -3044,6 +3241,15 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ).apply {
                         setMargins(0, 0, dpToPx(12), 0)
                     }
+                }
+
+                val bodyLayout = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
                 }
 
                 if (isImage) {
@@ -3062,7 +3268,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                             pasteClipboardImage(item)
                         }
                     }
-                    contentLayout.addView(imageView)
+                    bodyLayout.addView(imageView)
                 }
 
                 val textToCheck = item.text
@@ -3070,7 +3276,7 @@ class GlideTypeKeyboardService : InputMethodService() {
 
                 val clipTextView = TextView(this).apply {
                     text = if (isImage) "Copied Image" else item.text
-                    setTextColor(if (isUrl) Color.parseColor("#3498db") else Color.WHITE)
+                    setTextColor(if (isUrl) Color.parseColor("#3498db") else themeTextColor)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                     maxLines = 2
                     ellipsize = android.text.TextUtils.TruncateAt.END
@@ -3088,9 +3294,29 @@ class GlideTypeKeyboardService : InputMethodService() {
                         }
                     }
                 }
-                contentLayout.addView(clipTextView)
+                bodyLayout.addView(clipTextView)
+                textAndMetaLayout.addView(bodyLayout)
 
-                itemRow.addView(contentLayout)
+                val timeStr = android.text.format.DateUtils.getRelativeTimeSpanString(
+                    item.timestamp,
+                    System.currentTimeMillis(),
+                    android.text.format.DateUtils.MINUTE_IN_MILLIS
+                ).toString()
+
+                val timeTextView = TextView(this).apply {
+                    text = timeStr
+                    setTextColor(Color.GRAY)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, dpToPx(2), 0, 0)
+                    }
+                }
+                textAndMetaLayout.addView(timeTextView)
+
+                itemRow.addView(textAndMetaLayout)
 
                 if (isUrl) {
                     val browserIcon = ImageView(this).apply {
@@ -3124,7 +3350,7 @@ class GlideTypeKeyboardService : InputMethodService() {
 
                 val pinBtn = ImageView(this).apply {
                     setImageResource(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin)
-                    setColorFilter(if (item.isPinned) Color.parseColor(themeAccentColor) else Color.WHITE)
+                    setColorFilter(if (item.isPinned) Color.parseColor(themeAccentColor) else themeTextColor)
                     background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                     isClickable = true
                     isFocusable = true
@@ -3152,7 +3378,8 @@ class GlideTypeKeyboardService : InputMethodService() {
                 }
                 itemRow.addView(delBtn)
 
-                listLayout.addView(itemRow)
+                container.addView(itemRow)
+                listLayout.addView(container)
             }
         }
 
@@ -3734,7 +3961,7 @@ class GlideTypeKeyboardService : InputMethodService() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     1.0f
                 ).apply {
-                    setMargins(dpToPx(keySpacingDp), dpToPx(6), dpToPx(keySpacingDp), dpToPx(6))
+                    setMargins(dpToPx(keySpacingDp), dpToPx(2), dpToPx(keySpacingDp), dpToPx(2))
                 }
 
                 val keyLayout = RelativeLayout(context).apply {
@@ -3752,11 +3979,13 @@ class GlideTypeKeyboardService : InputMethodService() {
 
                 val mainTextView = TextView(context).apply {
                     text = key
-                    setTextColor(Color.WHITE)
+                    setTextColor(themeTextColor)
                     val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
                     val textSize = if (isLandscape) 15f else 14f
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, textSize)
                     gravity = Gravity.CENTER
+                    isClickable = false
+                    isFocusable = false
                     layoutParams = RelativeLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
@@ -3768,6 +3997,15 @@ class GlideTypeKeyboardService : InputMethodService() {
 
                 keyLayout.setOnClickListener {
                     vibrateClick()
+                    if (keyboardEffect != "none" && keyboardEffectsView != null) {
+                        val location = IntArray(2)
+                        it.getLocationOnScreen(location)
+                        val keyboardAreaLoc = IntArray(2)
+                        keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                        val relativeX = location[0] - keyboardAreaLoc[0] + it.width / 2f
+                        val relativeY = location[1] - keyboardAreaLoc[1] + it.height / 2f
+                        keyboardEffectsView?.triggerEffect(relativeX, relativeY, it.width, it.height)
+                    }
                     handlePcShortcutPress(key)
                 }
 
@@ -3949,6 +4187,251 @@ class GlideTypeKeyboardService : InputMethodService() {
         var longPressRunnable: Runnable? = null,
         var spaceLongPressRunnable: Runnable? = null
     )
+
+    private fun triggerKeyEffect(v: View, event: MotionEvent) {
+        if (keyboardEffect == "none" || keyboardEffectsView == null) return
+        val area = activeKeyboardArea ?: return
+        val location = IntArray(2)
+        v.getLocationOnScreen(location)
+        val keyboardAreaLoc = IntArray(2)
+        area.getLocationOnScreen(keyboardAreaLoc)
+        val relativeX = location[0] - keyboardAreaLoc[0] + event.x
+        val relativeY = location[1] - keyboardAreaLoc[1] + event.y
+        keyboardEffectsView?.triggerEffect(relativeX, relativeY, v.width, v.height)
+    }
+
+    private fun toggleOcrMode() {
+        if (currentViewMode == ViewMode.OCR) {
+            stopOcrCamera()
+            currentViewMode = ViewMode.QWERTY
+        } else {
+            if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "Please grant camera permission to use OCR scanning", Toast.LENGTH_LONG).show()
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra("request_camera", true)
+                }
+                startActivity(intent)
+            } else {
+                currentViewMode = ViewMode.OCR
+            }
+        }
+        updateKeyboardLayout()
+    }
+
+    private fun createOcrLayout(): View {
+        val container = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val previewView = androidx.camera.view.PreviewView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        container.addView(previewView)
+        ocrPreviewView = previewView
+
+        val overlay = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(75)
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
+            setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(6))
+        }
+
+        val scanTextLabel = TextView(this).apply {
+            text = "Camera OCR Active. Point at text..."
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        overlay.addView(scanTextLabel)
+
+        val buttonsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dpToPx(6), 0, 0)
+            }
+        }
+
+        val doneBtn = Button(this).apply {
+            text = "Insert & Done"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(120),
+                dpToPx(30)
+            ).apply {
+                setMargins(0, 0, dpToPx(12), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                commitOcrText()
+                stopOcrCamera()
+                currentViewMode = ViewMode.QWERTY
+                updateKeyboardLayout()
+            }
+        }
+        buttonsRow.addView(doneBtn)
+
+        val cancelBtn = Button(this).apply {
+            text = "Cancel"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(80),
+                dpToPx(30)
+            )
+            setOnClickListener {
+                vibrateClick()
+                currentInputConnection?.setComposingText("", 1)
+                stopOcrCamera()
+                currentViewMode = ViewMode.QWERTY
+                updateKeyboardLayout()
+            }
+        }
+        buttonsRow.addView(cancelBtn)
+        overlay.addView(buttonsRow)
+
+        container.addView(overlay)
+
+        val closeBtn = FrameLayout(this).apply {
+            background = createKeyDrawable(Color.parseColor("#80000000"), dpToPx(16))
+            isClickable = true
+            isFocusable = true
+            layoutParams = FrameLayout.LayoutParams(
+                dpToPx(32),
+                dpToPx(32)
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                setMargins(0, dpToPx(10), dpToPx(10), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                stopOcrCamera()
+                currentViewMode = ViewMode.QWERTY
+                updateKeyboardLayout()
+            }
+        }
+        val closeIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_collapse)
+            setColorFilter(Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        closeBtn.addView(closeIcon)
+        container.addView(closeBtn)
+
+        startOcrCamera(previewView, scanTextLabel)
+
+        return container
+    }
+
+    private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView) {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            statusLabel.text = "Camera permission not granted"
+            return
+        }
+
+        cameraExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+
+        cameraProviderFuture.addListener({
+            try {
+                cameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder().build().apply {
+                    setSurfaceProvider(previewView.surfaceProvider)
+                }
+
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+
+                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+
+                imageAnalysis.setAnalyzer(cameraExecutor!!, ImageAnalysis.Analyzer { imageProxy ->
+                    val mediaImage = imageProxy.image
+                    if (mediaImage != null) {
+                        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                        recognizer.process(image)
+                            .addOnSuccessListener { visionText ->
+                                val text = visionText.text.trim()
+                                if (text.isNotEmpty() && text != lastScannedText) {
+                                    lastScannedText = text
+                                    handler.post {
+                                        statusLabel.text = "Scanned: " + if (text.length > 30) text.take(27) + "..." else text
+                                        currentInputConnection?.setComposingText(text, 1)
+                                    }
+                                }
+                            }
+                            .addOnCompleteListener {
+                                imageProxy.close()
+                            }
+                    } else {
+                        imageProxy.close()
+                    }
+                })
+
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+                cameraProvider?.unbindAll()
+                cameraProvider?.bindToLifecycle(
+                    this@GlideTypeKeyboardService,
+                    cameraSelector,
+                    preview,
+                    imageAnalysis
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                handler.post {
+                    statusLabel.text = "Error starting camera: ${e.message}"
+                }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun stopOcrCamera() {
+        try {
+            cameraProvider?.unbindAll()
+            cameraProvider = null
+            cameraExecutor?.shutdown()
+            cameraExecutor = null
+            ocrPreviewView = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun commitOcrText() {
+        currentInputConnection?.let { ic ->
+            if (lastScannedText.isNotEmpty()) {
+                ic.commitText(lastScannedText, 1)
+                lastScannedText = ""
+            }
+        }
+    }
 }
 
 class GestureDrawingView(context: Context, val strokeColor: String) : View(context) {

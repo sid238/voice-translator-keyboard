@@ -45,6 +45,10 @@ export default function App() {
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
+  // New settings
+  const [keyboardEffect, setKeyboardEffect] = useState('none');
+  const [clipboardTimelineEnabled, setClipboardTimelineEnabled] = useState(false);
+
   // Other fields
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [selectedLanguages, setSelectedLanguages] = useState(['en']);
@@ -116,6 +120,8 @@ export default function App() {
           setSelectedLanguages(langsList.length > 0 ? langsList : ['en']);
           const escale = await FloatingBubble.getStringSetting('emoji_scale', 'medium');
           setEmojiScale(escale);
+          const effect = await FloatingBubble.getStringSetting('keyboard_effect', 'none');
+          setKeyboardEffect(effect);
         }
         if (FloatingBubble.getBooleanSetting) {
           const sound = await FloatingBubble.getBooleanSetting('sound_enabled', false);
@@ -141,6 +147,9 @@ export default function App() {
           setAddonVoiceText(avt);
           const atr = await FloatingBubble.getBooleanSetting('addon_translate', true);
           setAddonTranslate(atr);
+
+          const timeline = await FloatingBubble.getBooleanSetting('clipboard_timeline', false);
+          setClipboardTimelineEnabled(timeline);
         }
         if (FloatingBubble.getIntSetting) {
           const h = await FloatingBubble.getIntSetting('keyboard_height_dp', 270);
@@ -278,6 +287,7 @@ export default function App() {
                 { id: 'purple', name: 'Neon Purple', color: '#A855F7', bg: '#090514' },
                 { id: 'red', name: 'Sunset Crimson', color: palette.red, bg: '#140505' },
                 { id: 'dark', name: 'Pitch Dark', color: '#FFFFFF', bg: '#121212' },
+                { id: 'dynamic', name: 'Dynamic Match', color: '#00D68F', bg: '#1F1F1F' },
               ].map((t) => (
                 <TouchableOpacity
                   key={t.id}
@@ -432,6 +442,36 @@ export default function App() {
                 ))}
               </View>
             </View>
+
+            <View style={[styles.spacingSliderGroup, { marginTop: 12 }]}>
+              <Text style={styles.sliderHeading}>Keyboard Typing Effect</Text>
+              <Text style={styles.sliderDesc}>Select live particle/glow animation when keys are pressed.</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginTop: 8 }}>
+                {[
+                  { id: 'none', label: 'None' },
+                  { id: 'neon_trail', label: 'Neon Trail' },
+                  { id: 'fire', label: 'Fire Effect' },
+                  { id: 'water_ripple', label: 'Water Ripple' },
+                  { id: 'matrix_rain', label: 'Matrix Rain' },
+                  { id: 'galaxy', label: 'Galaxy' },
+                  { id: 'rgb_glow', label: 'RGB Glow' },
+                  { id: 'mechanical_flash', label: 'Flash' },
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.tabSelectorCell, keyboardEffect === item.id && styles.tabSelectorCellActive, { marginRight: 8, paddingHorizontal: 12 }]}
+                    onPress={() => {
+                      setKeyboardEffect(item.id);
+                      saveStringPref('keyboard_effect', item.id);
+                    }}
+                  >
+                    <Text style={[styles.tabSelectorCellText, keyboardEffect === item.id && styles.tabSelectorCellTextActive]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
           </View>
         );
         break;
@@ -567,6 +607,22 @@ export default function App() {
                 <Text style={styles.settingItemSubtitle}>Maximum number of sticky pinned items</Text>
               </View>
               <Text style={styles.badgeTextGreen}>{pinLimit} Items</Text>
+            </View>
+
+            <View style={styles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingItemTitle}>Clipboard Timeline Mode</Text>
+                <Text style={styles.settingItemSubtitle}>Connect copied items with a chronological vertical timeline thread</Text>
+              </View>
+              <Switch
+                value={clipboardTimelineEnabled}
+                onValueChange={(val) => {
+                  setClipboardTimelineEnabled(val);
+                  saveBooleanPref('clipboard_timeline', val);
+                }}
+                thumbColor={clipboardTimelineEnabled ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
+              />
             </View>
           </View>
         );
