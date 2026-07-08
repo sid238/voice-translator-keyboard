@@ -2855,9 +2855,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 setColorFilter(Color.WHITE)
                 val pad = dpToPx(6)
                 setPadding(pad, pad, pad, pad)
-                background = createKeyDrawable(
+                background = createKeyDrawableWithRadius(
                     if (isActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT,
-                    dpToPx(4)
+                    4
                 )
 
                 layoutParams = LinearLayout.LayoutParams(
@@ -2874,9 +2874,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         val child = tabContainer.getChildAt(childIdx) as? ImageView
                         if (child != null) {
                             val active = childIdx == currentEmojiCategoryIndex
-                            child.background = createKeyDrawable(
+                            child.background = createKeyDrawableWithRadius(
                                 if (active) Color.parseColor(themeAccentColor) else Color.TRANSPARENT,
-                                dpToPx(4)
+                                4
                             )
                         }
                     }
