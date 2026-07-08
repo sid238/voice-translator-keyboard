@@ -880,15 +880,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         if (isTranslationActive) {
-            mainLayout.addView(createTranslationPanel())
-        } else if (currentViewMode == ViewMode.CLIPBOARD) {
+            mainLayout.addView(createTranslationBar())
+        }
+        if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
         } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
             mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
-        } else {
-            if (suggestionsEnabled) {
-                mainLayout.addView(createToolbar())
-            }
+        } else if (suggestionsEnabled || isTranslationActive) {
+            mainLayout.addView(createToolbar())
         }
 
         val keyboardArea = FrameLayout(this).apply {
@@ -3304,11 +3303,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         return (dp * density).toInt()
     }
 
-    private var translationSourceField: EditText? = null
-    private var translationTargetField: EditText? = null
-
-    private fun createTranslationPanel(): View {
-        val panel = LinearLayout(this).apply {
+    private fun createTranslationBar(): View {
+        val bar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#CC1A1A2E"))
             layoutParams = LinearLayout.LayoutParams(
@@ -3317,62 +3313,38 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             )
         }
 
-        // Top nav bar: back + language selectors + switch
-        val navBar = LinearLayout(this).apply {
+        val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(2))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(38)
+                dpToPx(32)
             )
         }
 
-        val backBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(32), dpToPx(32))
-            setOnClickListener {
-                vibrateClick()
-                translationInputField = null
-                isTranslationActive = false
-                currentInputConnection?.finishComposingText()
-                updateKeyboardLayout()
-            }
-        }
-        val backIcon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_close)
-            setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
-        }
-        backBtn.addView(backIcon)
-        navBar.addView(backBtn)
-
-        val sourceLangBtn = TextView(this).apply {
+        val sourceBtn = TextView(this).apply {
             text = translationSourceLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(42), dpToPx(28)).apply {
-                setMargins(dpToPx(6), 0, 0, 0)
-            }
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
             setOnClickListener {
                 vibrateClick()
                 showLanguageMenu(this, true)
             }
         }
-        navBar.addView(sourceLangBtn)
+        navRow.addView(sourceBtn)
 
-        val switchBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#333333"), dpToPx(keyRadiusDp))
-            isClickable = true
-            isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(28)).apply {
-                setMargins(dpToPx(4), 0, dpToPx(4), 0)
-            }
+        val switchBtn = TextView(this).apply {
+            text = "⇄"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(4), 0, dpToPx(4), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(24))
             setOnClickListener {
                 vibrateClick()
                 val temp = translationSourceLang
@@ -3381,101 +3353,81 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 updateKeyboardLayout()
             }
         }
-        val switchIcon = TextView(this).apply {
-            text = "⇄"
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.CENTER }
-        }
-        switchBtn.addView(switchIcon)
-        navBar.addView(switchBtn)
+        navRow.addView(switchBtn)
 
-        val targetLangBtn = TextView(this).apply {
+        val targetBtn = TextView(this).apply {
             text = translationTargetLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(42), dpToPx(28))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
             setOnClickListener {
                 vibrateClick()
                 showLanguageMenu(this, false)
             }
         }
-        navBar.addView(targetLangBtn)
+        navRow.addView(targetBtn)
 
-        val spacer = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-        }
-        navBar.addView(spacer)
+        val sp = View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
+        navRow.addView(sp)
 
-        val doneBtn = TextView(this).apply {
-            text = "Done"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(28)).apply {
-                setMargins(dpToPx(4), 0, 0, 0)
-            }
+        val closeBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
             setOnClickListener {
                 vibrateClick()
-                val sourceText = translationSourceField?.text?.toString() ?: ""
-                if (sourceText.isNotEmpty()) {
-                    currentInputConnection?.commitText(sourceText, 1)
-                }
                 translationInputField = null
                 isTranslationActive = false
+                currentInputConnection?.finishComposingText()
                 updateKeyboardLayout()
             }
         }
-        navBar.addView(doneBtn)
-        panel.addView(navBar)
+        val closeIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(12), dpToPx(12)).apply { gravity = Gravity.CENTER }
+        }
+        closeBtn.addView(closeIcon)
+        navRow.addView(closeBtn)
+        bar.addView(navRow)
 
-        // Source input box
-        val sourceBox = FrameLayout(this).apply {
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+        val inputBox = FrameLayout(this).apply {
+            setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(42)
+                dpToPx(40)
             )
         }
-        val sourceEdit = EditText(this).apply {
+        val inputEdit = EditText(this).apply {
             translationInputField = this
-            translationSourceField = this
             showSoftInputOnFocus = false
             hint = "Type here to translate..."
             setHintTextColor(Color.parseColor("#66FFFFFF"))
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            maxLines = 2
-            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            maxLines = 1
+            isSingleLine = true
+            setPadding(dpToPx(10), 0, dpToPx(10), 0)
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             post { requestFocus() }
-            setOnTouchListener { v, event -> v.requestFocus(); false }
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
                     val query = s?.toString() ?: ""
-                    if (query.isEmpty()) {
-                        translationTargetField?.setText("")
-                        return
-                    }
+                    if (query.isEmpty()) return
                     translationRunnable = Runnable {
                         translateText(query, translationSourceLang, translationTargetLang) { result ->
                             if (result != null) {
-                                translationTargetField?.setText(result)
+                                currentInputConnection?.setComposingText(result, 1)
                             }
                         }
                     }
@@ -3484,110 +3436,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
-        sourceBox.addView(sourceEdit)
-        panel.addView(sourceBox)
+        inputBox.addView(inputEdit)
+        bar.addView(inputBox)
 
-        // Target output box
-        val targetBox = FrameLayout(this).apply {
-            setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(6))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(42)
-            )
-        }
-        val targetEdit = EditText(this).apply {
-            translationTargetField = this
-            isFocusable = false
-            isClickable = true
-            hint = "Translation"
-            setHintTextColor(Color.parseColor("#44FFFFFF"))
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
-            background = createKeyDrawableWithRadius(Color.parseColor("#221A1A2E"), 4)
-            maxLines = 2
-            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setOnClickListener {
-                val text = text?.toString() ?: ""
-                if (text.isNotEmpty()) {
-                    currentInputConnection?.commitText(text, 1)
-                    Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-        targetBox.addView(targetEdit)
-        panel.addView(targetBox)
-
-        return panel
+        return bar
     }
 
 
 
-    private fun showAiAssistantMenu(anchorView: View) {
-        val popup = PopupMenu(this, anchorView)
-        val options = listOf(
-            "Write Email" to "Write a professional email based on context",
-            "Write Message" to "Write a friendly message",
-            "Rewrite" to "Rewrite the selected text",
-            "Summarize" to "Summarize the text",
-            "Make Professional" to "Make text more professional",
-            "Make Casual" to "Make text more casual",
-            "Custom Prompt" to "Write your own custom prompt"
-        )
-        for ((index, pair) in options.withIndex()) {
-            popup.menu.add(0, index, 0, pair.first)
-        }
-        popup.setOnMenuItemClickListener { item ->
-            val action = options[item.itemId].first
-            if (action == "Custom Prompt") {
-                showAiPromptDialog()
-                return@setOnMenuItemClickListener true
-            }
-            val ic = currentInputConnection ?: return@setOnMenuItemClickListener true
-            val textBefore = ic.getTextBeforeCursor(5000, 0) ?: ""
-            val textAfter = ic.getTextAfterCursor(5000, 0) ?: ""
-            val selectedText = ic.getSelectedText(0)
-            val text = if (!selectedText.isNullOrEmpty()) selectedText.toString()
-                else textBefore.toString() + textAfter.toString()
-            if (text.isNotEmpty()) {
-                Toast.makeText(this, "AI processing...", Toast.LENGTH_SHORT).show()
-                aiAssist(action, text) { result ->
-                    if (result != null) {
-                        if (!selectedText.isNullOrEmpty()) {
-                            ic.commitText(result, 1)
-                        } else {
-                            ic.deleteSurroundingText(textBefore.length, textAfter.length)
-                            ic.commitText(result, 1)
-                        }
-                        Toast.makeText(this, "Done!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this, "AI request failed", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } else {
-                Toast.makeText(this, "No text found. Type something first", Toast.LENGTH_SHORT).show()
-            }
-            true
-        }
-        popup.show()
-    }
-
-    private fun showAiPromptDialog() {
-        val inputEditText = EditText(this).apply {
-            hint = "Enter your custom prompt..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 3
-            maxLines = 6
-            setBackgroundColor(Color.parseColor("#333333"))
-            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
-        }
-
+    private fun showAiChatDialog() {
+        val messages = mutableListOf<Pair<Boolean, String>>() // true=user, false=ai
         val ic = currentInputConnection
         val textBefore = ic?.getTextBeforeCursor(5000, 0) ?: ""
         val textAfter = ic?.getTextAfterCursor(5000, 0) ?: ""
@@ -3595,43 +3453,239 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val contextText = if (!selectedText.isNullOrEmpty()) selectedText.toString()
             else textBefore.toString() + textAfter.toString()
 
-        if (contextText.isEmpty()) {
-            inputEditText.hint = "Enter your prompt (no text context available)"
-        } else {
-            inputEditText.hint = "Prompt will use: \"$contextText\""
+        val chatLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#1A1A2E"))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(320),
+                dpToPx(400)
+            )
         }
+
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(40)
+            )
+        }
+        val titleText = TextView(this).apply {
+            text = "Orbit AI Chat"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        header.addView(titleText)
+        val insertCtx = TextView(this).apply {
+            text = "Use"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor + "33"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(26))
+            setOnClickListener {
+                if (contextText.isNotEmpty()) {
+                    val chatInput = chatLayout.findViewWithTag<EditText>("chatInput")
+                    if (chatInput != null) {
+                        val current = chatInput.text.toString()
+                        chatInput.setText(if (current.isEmpty()) contextText else "$current\n$contextText")
+                        chatInput.setSelection(chatInput.text.length)
+                    }
+                }
+            }
+        }
+        header.addView(insertCtx)
+        chatLayout.addView(header)
+
+        val divider = View(this).apply {
+            setBackgroundColor(Color.parseColor("#33FFFFFF"))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1)
+        }
+        chatLayout.addView(divider)
+
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+            isFillViewport = true
+        }
+        val msgContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            tag = "msgContainer"
+        }
+        scrollView.addView(msgContainer)
+        chatLayout.addView(scrollView)
+
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(8))
+            setBackgroundColor(Color.parseColor("#222244"))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(50)
+            )
+        }
+        val chatInput = EditText(this).apply {
+            hint = "Ask AI anything..."
+            setHintTextColor(Color.parseColor("#66FFFFFF"))
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#333355"), 4)
+            maxLines = 3
+            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            tag = "chatInput"
+        }
+        inputRow.addView(chatInput)
+
+        val sendBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), dpToPx(keyRadiusDp))
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                setMargins(dpToPx(6), 0, 0, 0)
+            }
+            setOnClickListener {
+                val msg = chatInput.text.toString().trim()
+                if (msg.isEmpty()) return@setOnClickListener
+                chatInput.setText("")
+                addChatMessage(msgContainer, msg, true)
+                messages.add(true to msg)
+
+                val loadingView = addChatMessage(msgContainer, "Thinking...", false)
+                scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+
+                val fullPrompt = if (contextText.isNotEmpty()) "$msg\n\nContext: $contextText" else msg
+                aiAssist("Chat", fullPrompt) { result ->
+                    val response = result ?: "Sorry, I couldn't process that."
+                    val lastChild = msgContainer.getChildAt(msgContainer.childCount - 1)
+                    if (lastChild != null && lastChild is TextView && lastChild.text == "Thinking...") {
+                        msgContainer.removeView(lastChild)
+                    }
+                    addChatMessage(msgContainer, response, false)
+                    messages.add(false to response)
+                    scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+                }
+            }
+        }
+        val sendIcon = TextView(this).apply {
+            text = "➤"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            gravity = Gravity.CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.CENTER }
+        }
+        sendBtn.addView(sendIcon)
+        inputRow.addView(sendBtn)
+        chatLayout.addView(inputRow)
+
+        // Quick actions row
+        val quickRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(34)
+            )
+        }
+        val quickActions = listOf("Rewrite", "Summarize", "Fix Grammar", "Translate")
+        for (action in quickActions) {
+            val chip = TextView(this).apply {
+                text = action
+                setTextColor(Color.parseColor(themeAccentColor))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                gravity = Gravity.CENTER
+                setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3))
+                background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor + "22"), 4)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dpToPx(24)
+                ).apply { setMargins(dpToPx(3), 0, dpToPx(3), 0) }
+                setOnClickListener {
+                    val prompt = when (action) {
+                        "Rewrite" -> "Rewrite this text to be clearer: $contextText"
+                        "Summarize" -> "Summarize this text: $contextText"
+                        "Fix Grammar" -> "Fix grammar in this text: $contextText"
+                        "Translate" -> "Translate this text to English: $contextText"
+                        else -> contextText
+                    }
+                    chatInput.setText(prompt)
+                }
+            }
+            quickRow.addView(chip)
+        }
+        chatLayout.addView(quickRow)
 
         try {
             AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Custom AI Prompt")
-                .setView(inputEditText)
-                .setPositiveButton("Send") { _: android.content.DialogInterface, _: Int ->
-                    val prompt = inputEditText.text.toString()
-                    if (prompt.isNotEmpty()) {
-                        Toast.makeText(this, "AI processing...", Toast.LENGTH_SHORT).show()
-                        val fullText = if (contextText.isNotEmpty()) "$prompt\n\nContext: $contextText" else prompt
-                        aiAssist("Custom", fullText) { result ->
-                            if (result != null) {
-                                if (!selectedText.isNullOrEmpty()) {
-                                    ic?.commitText(result, 1)
-                                } else {
-                                    ic?.deleteSurroundingText(textBefore.length, textAfter.length)
-                                    ic?.commitText(result, 1)
-                                }
-                                Toast.makeText(this, "Done!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(this, "AI request failed", Toast.LENGTH_SHORT).show()
-                            }
+                .setView(chatLayout)
+                .setPositiveButton("Insert Last Response", null)
+                .setNegativeButton("Close", null)
+                .show().apply {
+                    getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
+                        val lastResponse = messages.lastOrNull { !it.first }?.second
+                        if (lastResponse != null) {
+                            ic?.commitText(lastResponse, 1)
+                            Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                            dismiss()
+                        } else {
+                            Toast.makeText(this@GlideTypeKeyboardService, "No AI response yet", Toast.LENGTH_SHORT).show()
                         }
-                    } else {
-                        Toast.makeText(this, "Please enter a prompt", Toast.LENGTH_SHORT).show()
                     }
                 }
-                .setNegativeButton("Cancel", null)
-                .show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Dialog error: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Chat error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun addChatMessage(container: LinearLayout, text: String, isUser: Boolean): TextView {
+        val msg = TextView(this).apply {
+            this.text = text
+            setTextColor(if (isUser) Color.WHITE else Color.parseColor("#CCCCFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setLineSpacing(4f, 1f)
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            val bgColor = if (isUser) Color.parseColor("#333355") else Color.parseColor("#222244")
+            background = createKeyDrawableWithRadius(bgColor, dpToPx(keyRadiusDp))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dpToPx(3), 0, dpToPx(3))
+                if (!isUser) {
+                    leftMargin = dpToPx(16)
+                } else {
+                    rightMargin = dpToPx(16)
+                }
+            }
+            setOnLongClickListener {
+                ic?.commitText(text, 1)
+                Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+        container.addView(msg)
+        return msg
+    }
+
+    private fun showAiAssistantMenu(anchorView: View) {
+        showAiChatDialog()
     }
 
     private fun aiAssist(action: String, text: String, callback: (String?) -> Unit) {
