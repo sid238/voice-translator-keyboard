@@ -29,6 +29,7 @@ import android.media.AudioManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -65,7 +66,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var lastShiftPressTime: Long = 0
     private var translationInputField: EditText? = null
     private var grammarInputField: EditText? = null
-    private var longPressDelayMs = 500
+    private var longPressDelayMs = 600
     private var keyboardHeightDp = 270 // Default keyboard height
     private var isSizeAdjustActive = false
     private var keyboardWidthPercent = 100
@@ -79,7 +80,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = true
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 7
+    private var keySpacingDp = 8
     private var lastSpacePressTime: Long = 0
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
@@ -360,12 +361,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
         grammarFeatureEnabled = prefs.getBoolean("addon_grammar", true)
-        longPressDelayMs = prefs.getInt("long_press_delay_ms", 500)
+        longPressDelayMs = prefs.getInt("long_press_delay_ms", 600)
 
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
-        keySpacingDp = prefs.getInt("key_spacing_dp", 7)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 8)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
@@ -2218,8 +2219,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
                     if (isShifted && !isCapsLock) { isShifted = false }
                     wasLastKeySpace = false
-                    updateShiftStateBasedOnContext()
-                    updateKeyboardLayout()
                 }
             }
             return
@@ -2287,8 +2286,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         isShifted = false
                     }
                     wasLastKeySpace = false
-                    updateShiftStateBasedOnContext()
-                    updateKeyboardLayout()
                 }
             }
             return
@@ -3065,53 +3062,27 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                         }
                         textView.text = categoryEmojis[position]
-                        var emojiRunnable: Runnable? = null
-                        textView.setOnTouchListener { v, event ->
-                            val selectedEmoji = categoryEmojis[position]
-                            when (event.action) {
-                                MotionEvent.ACTION_DOWN -> {
-                                    vibrateClick()
-                                    playClick(100)
-                                    addRecentEmoji(selectedEmoji)
-                                    if (isTranslationActive && translationInputField != null) {
-                                        val et = translationInputField!!
-                                        val start = et.selectionStart
-                                        val end = et.selectionEnd
-                                        et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
-                                    } else {
-                                        currentInputConnection?.commitText(selectedEmoji, 1)
-                                    }
-                                    if (categoryIndex == 0) {
-                                        loadEmojiGrid(categoryIndex)
-                                    }
-
-                                    emojiRunnable = object : Runnable {
-                                        override fun run() {
-                                            vibrateClick()
-                                            playClick(100)
-        if (isTranslationActive && translationInputField != null) {
-                                                val et = translationInputField!!
-                                                val start = et.selectionStart
-                                                val end = et.selectionEnd
-                                                et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
-                                            } else {
-                                                currentInputConnection?.commitText(selectedEmoji, 1)
-                                            }
-                                            handler.postDelayed(this, 120)
-                                        }
-                                    }
-                                    handler.postDelayed(emojiRunnable!!, 400)
-                                    v.isPressed = true
-                                }
-                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                    emojiRunnable?.let { handler.removeCallbacks(it) }
-                                    emojiRunnable = null
-                                    v.isPressed = false
-                                }
-                            }
-                            true
-                        }
                         return textView
+                    }
+                }
+                gridView.onItemClickListener = android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
+                    val selectedEmoji = categoryEmojis[position]
+                    vibrateClick()
+                    playClick(100)
+                    addRecentEmoji(selectedEmoji)
+                    val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                        else if (isTranslationActive && translationInputField != null) translationInputField
+                        else null
+                    if (targetField != null) {
+                        val et = targetField!!
+                        val start = et.selectionStart
+                        val end = et.selectionEnd
+                        et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
+                    } else {
+                        currentInputConnection?.commitText(selectedEmoji, 1)
+                    }
+                    if (categoryIndex == 0) {
+                        loadEmojiGrid(categoryIndex)
                     }
                 }
             }
@@ -3735,14 +3706,22 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createGrammarToolbar(): View {
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor(themeToolbarBg))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(40)
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
+        }
+
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(38)
+            )
             setPadding(dpToPx(6), 0, dpToPx(6), 0)
         }
 
@@ -3750,7 +3729,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(26))
             setOnClickListener {
                 vibrateClick()
                 grammarInputField = null
@@ -3762,24 +3741,24 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val closeIcon = ImageView(this).apply {
             setImageResource(R.drawable.ic_close)
             setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+            layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply {
                 gravity = Gravity.CENTER
             }
         }
         closeBtn.addView(closeIcon)
-        toolbar.addView(closeBtn)
+        topBar.addView(closeBtn)
 
         val grammarLabel = TextView(this).apply {
             text = "GRAMMAR"
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             gravity = Gravity.CENTER
             background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
-            layoutParams = LinearLayout.LayoutParams(dpToPx(55), dpToPx(30)).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(50), dpToPx(26)).apply {
                 setMargins(dpToPx(4), 0, 0, 0)
             }
         }
-        toolbar.addView(grammarLabel)
+        topBar.addView(grammarLabel)
 
         val inputField = EditText(this).apply {
             grammarInputField = this
@@ -3787,7 +3766,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             hint = "Type or paste text to check..."
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             background = null
             maxLines = 1
             isSingleLine = true
@@ -3796,7 +3775,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 1.0f
             ).apply {
-                setMargins(dpToPx(8), 0, dpToPx(8), 0)
+                setMargins(dpToPx(6), 0, dpToPx(6), 0)
             }
             post {
                 requestFocus()
@@ -3827,15 +3806,15 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 override fun afterTextChanged(s: android.text.Editable?) {}
             })
         }
-        toolbar.addView(inputField)
+        topBar.addView(inputField)
 
         val checkBtn = TextView(this).apply {
             text = "✓"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
             background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
-            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(26)).apply {
                 setMargins(0, 0, dpToPx(4), 0)
             }
             setOnClickListener {
@@ -3846,13 +3825,54 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 updateKeyboardLayout()
             }
         }
-        toolbar.addView(checkBtn)
+        topBar.addView(checkBtn)
 
-        return toolbar
+        root.addView(topBar)
+
+        val toneRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(26)
+            )
+            setPadding(dpToPx(8), 0, dpToPx(8), dpToPx(3))
+        }
+        for (tone in grammarTones) {
+            val isActive = tone.lowercase() == grammarTone
+            val toneBtn = TextView(this).apply {
+                text = tone
+                setTextColor(if (isActive) Color.parseColor(themeAccentColor) else Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                gravity = Gravity.CENTER
+                background = createKeyDrawable(
+                    if (isActive) Color.parseColor("#33${themeAccentColor.removePrefix("#")}") else Color.parseColor("#33FFFFFF"),
+                    dpToPx(4)
+                )
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    dpToPx(22),
+                    1.0f
+                ).apply {
+                    setMargins(dpToPx(2), 0, dpToPx(2), 0)
+                }
+                setOnClickListener {
+                    vibrateClick()
+                    grammarTone = tone.lowercase()
+                    updateKeyboardLayout()
+                }
+            }
+            toneRow.addView(toneBtn)
+        }
+        root.addView(toneRow)
+
+        return root
     }
 
     private var grammarRunnable: Runnable? = null
     private val grammarDebounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var grammarTone = "default"
+    private val grammarTones = listOf("Default", "Casual", "Professional", "Fun", "Romantic")
 
     private fun checkGrammar(text: String, callback: (String?) -> Unit) {
         Thread {
@@ -4534,6 +4554,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createOcrLayout(): View {
+        pendingGalleryImageHandler = { bitmap ->
+            processImageForOcr(bitmap)
+        }
+
         val container = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -4553,39 +4577,59 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val overlay = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#CC000000"))
+            setBackgroundColor(Color.parseColor("#DD000000"))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(180)
+                dpToPx(230)
             ).apply {
                 gravity = Gravity.BOTTOM
             }
-            setPadding(dpToPx(12), dpToPx(6), dpToPx(12), dpToPx(8))
+            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(12))
         }
 
-        val scanTextLabel = TextView(this).apply {
-            text = "Point camera at text or QR code, then tap Capture"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
+        val scanStatusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        overlay.addView(scanTextLabel)
+
+        val scanIndicator = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(8), dpToPx(8)).apply {
+                setMargins(0, 0, dpToPx(6), 0)
+            }
+            background = createKeyDrawable(Color.parseColor("#00D68F"), dpToPx(4))
+        }
+        scanStatusRow.addView(scanIndicator)
+
+        val scanTextLabel = TextView(this).apply {
+            text = "Live scanning..."
+            setTextColor(Color.parseColor("#00D68F"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.START
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+        }
+        scanStatusRow.addView(scanTextLabel)
+        overlay.addView(scanStatusRow)
 
         val qrResultLabel = TextView(this).apply {
             text = ""
-            setTextColor(Color.parseColor("#00D68F"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#FFD600"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.START
             setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, dpToPx(2), 0, 0)
+                setMargins(dpToPx(14), dpToPx(2), 0, 0)
             }
         }
         overlay.addView(qrResultLabel)
@@ -4599,18 +4643,21 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, dpToPx(4), 0, 0)
+                setMargins(0, dpToPx(6), 0, 0)
             }
         }
 
-        val galleryBtn = Button(this).apply {
+        val galleryBtn = TextView(this).apply {
             text = "Gallery"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = createKeyDrawable(Color.parseColor("#4F8CFF"), dpToPx(4))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawable(Color.parseColor("#4F8CFF"), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(65),
-                dpToPx(30)
+                0,
+                dpToPx(34),
+                1f
             ).apply {
                 setMargins(0, 0, dpToPx(4), 0)
             }
@@ -4621,14 +4668,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         buttonsRow.addView(galleryBtn)
 
-        val captureBtn = Button(this).apply {
+        val captureBtn = TextView(this).apply {
             text = "Capture"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = createKeyDrawable(Color.parseColor("#FF6B00"), dpToPx(4))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawable(Color.parseColor("#FF6B00"), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(65),
-                dpToPx(30)
+                0,
+                dpToPx(34),
+                1f
             ).apply {
                 setMargins(0, 0, dpToPx(4), 0)
             }
@@ -4636,10 +4686,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 vibrateClick()
                 ocrCaptureMode = !ocrCaptureMode
                 if (ocrCaptureMode) {
-                    (it as? Button)?.text = "Live"
-                    ocrStatusLabel?.text = "Captured. Press Live to resume scanning"
+                    (it as? TextView)?.text = "Live"
+                    ocrStatusLabel?.text = "Captured - press Live to resume scanning"
                 } else {
-                    (it as? Button)?.text = "Capture"
+                    (it as? TextView)?.text = "Capture"
                     lastScanTimestamp = 0L
                     ocrStatusLabel?.text = "Live scanning..."
                 }
@@ -4647,14 +4697,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         buttonsRow.addView(captureBtn)
 
-        val insertBtn = Button(this).apply {
+        val insertBtn = TextView(this).apply {
             text = "Insert"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(65),
-                dpToPx(30)
+                0,
+                dpToPx(34),
+                1f
             ).apply {
                 setMargins(0, 0, dpToPx(4), 0)
             }
@@ -4665,14 +4718,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         buttonsRow.addView(insertBtn)
 
-        val doneBtn = Button(this).apply {
+        val doneBtn = TextView(this).apply {
             text = "Done"
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(60),
-                dpToPx(30)
+                0,
+                dpToPx(34),
+                1f
             )
             setOnClickListener {
                 vibrateClick()
@@ -4844,12 +4900,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun openGalleryForOcr() {
         try {
-            val intent = Intent(Intent.ACTION_PICK).apply {
-                type = "image/*"
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(this, OcrGalleryActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             startActivity(intent)
-            Toast.makeText(this, "Open the app to process gallery images for OCR", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             ocrStatusLabel?.text = "Gallery: ${e.message}"
         }
@@ -4894,6 +4948,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
     }
 
+    companion object {
+        private var pendingGalleryImageHandler: ((Bitmap) -> Unit)? = null
+
+        fun handleGalleryImage(bitmap: Bitmap) {
+            pendingGalleryImageHandler?.invoke(bitmap)
+        }
+    }
+
     private fun stopOcrCamera() {
         try {
             cameraProvider?.unbindAll()
@@ -4909,7 +4971,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private fun commitOcrText() {
         val text = ocrTextEdit?.text?.toString() ?: return
         if (text.isNotEmpty()) {
-            currentInputConnection?.commitText(text, 1)
+            val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                else if (isTranslationActive && translationInputField != null) translationInputField
+                else null
+            if (targetField != null) {
+                val et = targetField!!
+                val start = et.selectionStart
+                val end = et.selectionEnd
+                et.text.replace(Math.min(start, end), Math.max(start, end), text)
+            } else {
+                currentInputConnection?.commitText(text, 1)
+            }
             ocrTextEdit?.setText("")
         } else {
             Toast.makeText(this, "No text to insert", Toast.LENGTH_SHORT).show()
