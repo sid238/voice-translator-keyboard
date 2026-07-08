@@ -3551,7 +3551,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         inputRow.addView(chatInput)
 
         val sendBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), dpToPx(keyRadiusDp))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), keyRadiusDp)
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
@@ -3662,7 +3662,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setLineSpacing(4f, 1f)
             setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
             val bgColor = if (isUser) Color.parseColor("#333355") else Color.parseColor("#222244")
-            background = createKeyDrawableWithRadius(bgColor, dpToPx(keyRadiusDp))
+            background = createKeyDrawableWithRadius(bgColor, keyRadiusDp)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -4326,6 +4326,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            setBackgroundColor(Color.BLACK)
         }
 
         val previewView = androidx.camera.view.PreviewView(this).apply {
@@ -4333,24 +4334,189 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            scaleType = androidx.camera.view.PreviewView.ScaleType.FILL_CENTER
         }
         container.addView(previewView)
         ocrPreviewView = previewView
 
-        val overlay = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#DD000000"))
+        // Subtle gradient overlay on camera
+        val gradientOverlay = View(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(230)
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.parseColor("#CC000000"))
+            )
+        }
+        container.addView(gradientOverlay)
+
+        // Top Bar
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(8), dpToPx(12), dpToPx(12), dpToPx(8))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(48)
+            ).apply { gravity = Gravity.TOP }
+        }
+
+        val backBtn = createOcrTopButton(R.drawable.ic_collapse) {
+            vibrateClick()
+            stopOcrCamera()
+            currentViewMode = ViewMode.QWERTY
+            updateKeyboardLayout()
+        }
+        topBar.addView(backBtn)
+
+        val titleTxt = TextView(this).apply {
+            text = "OCR Scanner"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        topBar.addView(titleTxt)
+
+        val flashBtn = createOcrTopButton(R.drawable.ic_camera) {
+            vibrateClick()
+            toggleOcrFlash()
+        }
+        topBar.addView(flashBtn)
+
+        val galleryTopBtn = createOcrTopButton(R.drawable.ic_gallery) {
+            vibrateClick()
+            openGalleryForOcr()
+        }
+        topBar.addView(galleryTopBtn)
+        container.addView(topBar)
+
+        // Scan frame overlay center
+        val scanFrame = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                dpToPx(240),
+                dpToPx(240)
+            ).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        val scanCornerPaint = Paint().apply {
+            color = Color.parseColor(themeAccentColor)
+            style = Paint.Style.STROKE
+            strokeWidth = dpToPx(3).toFloat()
+            isAntiAlias = true
+            maskFilter = BlurMaskFilter(dpToPx(4).toFloat(), BlurMaskFilter.Blur.OUTER)
+        }
+        val scanLinePaint = Paint().apply {
+            color = Color.parseColor(themeAccentColor)
+            style = Paint.Style.STROKE
+            strokeWidth = dpToPx(1).toFloat()
+            isAntiAlias = true
+            maskFilter = BlurMaskFilter(dpToPx(2).toFloat(), BlurMaskFilter.Blur.NORMAL)
+        }
+        val scanFrameView = object : View(this) {
+            var lineY = 0f
+            var lineDir = 1f
+            val animRunnable = object : Runnable {
+                override fun run() {
+                    lineY += lineDir * 2f
+                    if (lineY > height) lineDir = -1f
+                    if (lineY < 0) lineDir = 1f
+                    postInvalidateOnAnimation()
+                    postDelayed(this, 16)
+                }
+            }
+            override fun onAttachedToWindow() {
+                super.onAttachedToWindow()
+                post(animRunnable)
+            }
+            override fun onDetachedFromWindow() {
+                super.onDetachedFromWindow()
+                removeCallbacks(animRunnable)
+            }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val c = dpToPx(20).toFloat()
+                val w = width.toFloat()
+                val h = height.toFloat()
+                // Corner brackets
+                canvas.drawLine(0f, c, 0f, 0f, scanCornerPaint)
+                canvas.drawLine(0f, 0f, c, 0f, scanCornerPaint)
+                canvas.drawLine(w - c, 0f, w, 0f, scanCornerPaint)
+                canvas.drawLine(w, 0f, w, c, scanCornerPaint)
+                canvas.drawLine(w, h - c, w, h, scanCornerPaint)
+                canvas.drawLine(w - c, h, w, h, scanCornerPaint)
+                canvas.drawLine(0f, h - c, 0f, h, scanCornerPaint)
+                canvas.drawLine(0f, h, c, h, scanCornerPaint)
+                // Scan line
+                if (lineY in 0f..h) {
+                    val alpha = (255 - kotlin.math.abs(lineY - h / 2) / h * 128).toInt().coerceIn(0, 255)
+                    scanLinePaint.alpha = alpha
+                    canvas.drawLine(dpToPx(8).toFloat(), lineY, w - dpToPx(8).toFloat(), lineY, scanLinePaint)
+                }
+            }
+        }.apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        scanFrame.addView(scanFrameView)
+
+        // Scan hint below frame
+        val scanHint = TextView(this).apply {
+            text = "Point camera at text"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        }
+        val scanHintLayout = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            setMargins(0, 0, 0, dpToPx(180))
+        }
+        container.addView(scanHint, scanHintLayout)
+
+        val scanSubHint = TextView(this).apply {
+            text = "Text will be detected automatically"
+            setTextColor(Color.parseColor("#99FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+        }
+        val scanSubHintLayout = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM
+            setMargins(0, 0, 0, dpToPx(160))
+        }
+        container.addView(scanSubHint, scanSubHintLayout)
+
+        // Floating glass bottom card
+        val bottomCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(16), dpToPx(14), dpToPx(16), dpToPx(16))
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
             }
-            setPadding(dpToPx(16), dpToPx(8), dpToPx(16), dpToPx(12))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadii = floatArrayOf(dpToPx(24).toFloat(), dpToPx(24).toFloat(), dpToPx(24).toFloat(), dpToPx(24).toFloat(), 0f, 0f, 0f, 0f)
+                setColor(Color.parseColor("#E80F0F1A"))
+            }
         }
 
-        val scanStatusRow = LinearLayout(this).apply {
+        // Status row
+        val statusRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -4358,144 +4524,214 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-
-        val scanIndicator = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(8), dpToPx(8)).apply {
-                setMargins(0, 0, dpToPx(6), 0)
-            }
+        val statusDot = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(6), dpToPx(6)).apply { setMargins(0, 0, dpToPx(6), 0) }
             background = createKeyDrawableWithRadius(Color.parseColor("#00D68F"), 4)
+            isClickable = false
+            isFocusable = false
         }
-        scanStatusRow.addView(scanIndicator)
-
+        statusRow.addView(statusDot)
         val scanTextLabel = TextView(this).apply {
-            text = "Live scanning..."
+            text = "Scanning..."
             setTextColor(Color.parseColor("#00D68F"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.START
             setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        scanStatusRow.addView(scanTextLabel)
-        overlay.addView(scanStatusRow)
+        statusRow.addView(scanTextLabel)
+        bottomCard.addView(statusRow)
 
         val qrResultLabel = TextView(this).apply {
             text = ""
             setTextColor(Color.parseColor("#FFD600"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.START
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             setTypeface(null, android.graphics.Typeface.BOLD)
+            visibility = View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(dpToPx(14), dpToPx(2), 0, 0)
-            }
+            ).apply { setMargins(dpToPx(12), dpToPx(2), 0, 0) }
         }
-        overlay.addView(qrResultLabel)
+        bottomCard.addView(qrResultLabel)
 
+        // Preview image
         val previewImage = ImageView(this).apply {
             ocrPreviewImage = this
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(80)
-            ).apply {
-                setMargins(0, dpToPx(2), 0, dpToPx(2))
-            }
+                dpToPx(100)
+            ).apply { setMargins(0, dpToPx(6), 0, dpToPx(4)) }
             scaleType = ImageView.ScaleType.FIT_CENTER
             visibility = View.GONE
         }
-        overlay.addView(previewImage)
+        bottomCard.addView(previewImage)
 
-        overlay.addView(createOcrTextEdit())
+        // Detected text
+        val ocrEdit = EditText(this).apply {
+            ocrTextEdit = this
+            hint = "Detected text will appear here"
+            setHintTextColor(Color.parseColor("#66FFFFFF"))
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#22FFFFFF"), keyRadiusDp)
+            maxLines = 4
+            setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, dpToPx(4), 0, dpToPx(8)) }
+        }
+        bottomCard.addView(ocrEdit)
 
-        val buttonsRow = LinearLayout(this).apply {
+        // Action chips row (Copy, Translate, Summarize, AI)
+        val chipRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+        val chips = listOf("Copy", "Translate", "Summarize", "AI")
+        val chipColors = listOf("#00D68F", themeAccentColor, "#8B5CF6", "#FF6B00")
+        for ((i, chip) in chips.withIndex()) {
+            val chipBtn = TextView(this).apply {
+                text = chip
+                setTextColor(Color.parseColor(chipColors[i]))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
+                background = createKeyDrawableWithRadius(Color.parseColor(chipColors[i] + "22"), keyRadiusDp)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    dpToPx(28)
+                ).apply { setMargins(0, 0, dpToPx(6), 0) }
+                setOnClickListener {
+                    vibrateClick()
+                    val text = ocrEdit.text.toString()
+                    if (text.isEmpty()) { Toast.makeText(this@GlideTypeKeyboardService, "No text detected", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                    when (chip) {
+                        "Copy" -> {
+                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("ocr", text))
+                            val item = ClipboardItem(text = text, timestamp = System.currentTimeMillis())
+                            clipboardHistory.add(0, item)
+                            savePreferences()
+                            Toast.makeText(this@GlideTypeKeyboardService, "Copied!", Toast.LENGTH_SHORT).show()
+                        }
+                        "Translate" -> {
+                            isTranslationActive = true
+                            translationSourceField?.setText(text)
+                            updateKeyboardLayout()
+                        }
+                        "Summarize" -> {
+                            Toast.makeText(this@GlideTypeKeyboardService, "Summarizing...", Toast.LENGTH_SHORT).show()
+                            aiAssist("Summarize", text) { result ->
+                                if (result != null) ocrEdit.setText(result)
+                            }
+                        }
+                        "AI" -> {
+                            currentInputConnection?.commitText(text, 1)
+                            showAiChatDialog()
+                        }
+                    }
+                }
+            }
+            chipRow.addView(chipBtn)
+        }
+        bottomCard.addView(chipRow)
+
+        // Divider
+        val div = View(this).apply {
+            setBackgroundColor(Color.parseColor("#22FFFFFF"))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1
+            ).apply { setMargins(0, dpToPx(10), 0, dpToPx(8)) }
+        }
+        bottomCard.addView(div)
+
+        // Action buttons row
+        val btnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, dpToPx(6), 0, 0)
-            }
+                dpToPx(40)
+            )
         }
-
-        val galleryBtn = TextView(this).apply {
-            text = "Gallery"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#4F8CFF"))
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                dpToPx(34),
-                1f
-            ).apply {
-                setMargins(0, 0, dpToPx(4), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                openGalleryForOcr()
-            }
-        }
-        buttonsRow.addView(galleryBtn)
 
         val captureBtn = TextView(this).apply {
-            text = "Capture"
+            text = "  Capture  "
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#FF6B00"))
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                dpToPx(34),
-                1f
-            ).apply {
-                setMargins(0, 0, dpToPx(4), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                captureAndScan()
-            }
-        }
-        buttonsRow.addView(captureBtn)
-
-        val insertBtn = TextView(this).apply {
-            text = "Insert"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawable(Color.parseColor(themeAccentColor))
             layoutParams = LinearLayout.LayoutParams(
                 0,
-                dpToPx(34),
+                dpToPx(38),
                 1f
-            ).apply {
-                setMargins(0, 0, dpToPx(4), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                commitOcrText()
-            }
+            ).apply { setMargins(0, 0, dpToPx(6), 0) }
+            setOnClickListener { vibrateClick(); captureAndScan() }
         }
-        buttonsRow.addView(insertBtn)
+        btnRow.addView(captureBtn)
 
-        val doneBtn = TextView(this).apply {
-            text = "Done"
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        val galleryBtn = TextView(this).apply {
+            text = "  Gallery  "
+            setTextColor(Color.parseColor("#CCFFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#33FFFFFF"))
+            background = createKeyDrawableWithRadius(Color.TRANSPARENT, keyRadiusDp)
             layoutParams = LinearLayout.LayoutParams(
                 0,
-                dpToPx(34),
+                dpToPx(38),
+                1f
+            )
+            setOnClickListener { vibrateClick(); openGalleryForOcr() }
+            setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> v.background = createKeyDrawableWithRadius(Color.parseColor("#22FFFFFF"), keyRadiusDp)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.background = createKeyDrawableWithRadius(Color.TRANSPARENT, keyRadiusDp)
+                }
+                false
+            }
+        }
+        btnRow.addView(galleryBtn)
+        bottomCard.addView(btnRow)
+
+        val textBtnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(34)
+            ).apply { setMargins(0, dpToPx(4), 0, 0) }
+        }
+
+        val insertBtn = TextView(this).apply {
+            text = "Insert Text"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1f
+            )
+            setOnClickListener { vibrateClick(); commitOcrText() }
+        }
+        textBtnRow.addView(insertBtn)
+
+        val closeBtn2 = TextView(this).apply {
+            text = "Close"
+            setTextColor(Color.parseColor("#66FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 1f
             )
             setOnClickListener {
@@ -4505,42 +4741,32 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 updateKeyboardLayout()
             }
         }
-        buttonsRow.addView(doneBtn)
-        overlay.addView(buttonsRow)
+        textBtnRow.addView(closeBtn2)
+        bottomCard.addView(textBtnRow)
 
-        container.addView(overlay)
-
-        val closeBtn = FrameLayout(this).apply {
-            background = createKeyDrawable(Color.parseColor("#80000000"))
-            isClickable = true
-            isFocusable = true
-            layoutParams = FrameLayout.LayoutParams(
-                dpToPx(32),
-                dpToPx(32)
-            ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                setMargins(0, dpToPx(10), dpToPx(10), 0)
-            }
-            setOnClickListener {
-                vibrateClick()
-                stopOcrCamera()
-                currentViewMode = ViewMode.QWERTY
-                updateKeyboardLayout()
-            }
-        }
-        val closeIcon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_collapse)
-            setColorFilter(Color.WHITE)
-            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
-                gravity = Gravity.CENTER
-            }
-        }
-        closeBtn.addView(closeIcon)
-        container.addView(closeBtn)
+        container.addView(bottomCard)
+        container.addView(scanFrame)
 
         startOcrCamera(previewView, scanTextLabel, qrResultLabel)
 
         return container
+    }
+
+    private fun createOcrTopButton(iconRes: Int, onClick: () -> Unit): View {
+        return FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#66000000"), keyRadiusDp)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            }
+            setOnClickListener { onClick() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(iconRes)
+                setColorFilter(Color.WHITE)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { gravity = Gravity.CENTER }
+            })
+        }
     }
 
     private var qrDetectedText = ""
@@ -4550,23 +4776,21 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     // removed unused scan debounce vars
     private var imageCaptureUseCase: androidx.camera.core.ImageCapture? = null
 
-    private fun createOcrTextEdit(): EditText {
-        return EditText(this).apply {
-            ocrTextEdit = this
-            hint = "Extracted text will appear here..."
-            setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            background = createKeyDrawableWithRadius(Color.parseColor("#33FFFFFF"), 4)
-            maxLines = 3
-            isSingleLine = false
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(50)
-            ).apply {
-                setMargins(0, dpToPx(4), 0, dpToPx(4))
+    private var isOcrFlashOn = false
+
+    private fun toggleOcrFlash() {
+        try {
+            cameraProvider?.let { provider ->
+                provider.cameraInfo?.let { info ->
+                    val cameraControl = info.cameraControl
+                    if (cameraControl != null) {
+                        isOcrFlashOn = !isOcrFlashOn
+                        cameraControl.enableTorch(isOcrFlashOn)
+                        Toast.makeText(this, if (isOcrFlashOn) "Flash on" else "Flash off", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
-        }
+        } catch (e: Exception) {}
     }
 
     private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView, qrLabel: TextView) {
