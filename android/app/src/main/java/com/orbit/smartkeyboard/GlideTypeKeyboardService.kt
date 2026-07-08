@@ -130,6 +130,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var cameraExecutor: java.util.concurrent.ExecutorService? = null
     private var ocrPreviewView: androidx.camera.view.PreviewView? = null
     private var lastScannedText = ""
+    private var isWaitingForOcrGallery = false
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -305,6 +306,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     override fun onDestroy() {
         speechRecognizer?.destroy()
+        speechRecognizer = null
         stopOcrCamera()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         super.onDestroy()
@@ -336,8 +338,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         super.onStartInputView(info, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        currentViewMode = ViewMode.QWERTY
-        isTranslationActive = false
+        if (!isWaitingForOcrGallery) {
+            currentViewMode = ViewMode.QWERTY
+            isTranslationActive = false
+        }
+        isWaitingForOcrGallery = false
         isHindiPage2 = false
         isSymbolsPage2 = false
         // Refresh preferences and clipboard history when IME is shown
@@ -847,39 +852,40 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun updateKeyboardLayoutInternal() {
         if (!::keyboardContainer.isInitialized) return
-        keyboardContainer.removeAllViews()
+        try {
+            keyboardContainer.removeAllViews()
 
-        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val calculatedHeight = if (isLandscape) {
-            (keyboardHeightDp * 0.75f).toInt().coerceIn(160, 240)
-        } else {
-            keyboardHeightDp
-        }
-        val params = keyboardContainer.layoutParams
-        params.height = dpToPx(calculatedHeight)
-        keyboardContainer.layoutParams = params
-        if (customBgDrawable != null) {
-            keyboardContainer.background = customBgDrawable
-        } else {
-            keyboardContainer.setBackgroundColor(Color.parseColor(themeBgColor))
-        }
-        keyboardContainer.clipChildren = false
-        keyboardContainer.clipToPadding = false
-
-        val screenWidth = resources.displayMetrics.widthPixels
-        val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
-        val mainLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            clipToPadding = false
-            setPadding(dpToPx(4), 0, dpToPx(4), dpToPx(8))
-            layoutParams = FrameLayout.LayoutParams(
-                keyboardWidthPx,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ).apply {
-                gravity = keyboardGravity or Gravity.BOTTOM
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            val calculatedHeight = if (isLandscape) {
+                (keyboardHeightDp * 0.75f).toInt().coerceIn(160, 240)
+            } else {
+                keyboardHeightDp
             }
-        }
+            val params = keyboardContainer.layoutParams
+            params.height = dpToPx(calculatedHeight)
+            keyboardContainer.layoutParams = params
+            if (customBgDrawable != null) {
+                keyboardContainer.background = customBgDrawable
+            } else {
+                keyboardContainer.setBackgroundColor(Color.parseColor(themeBgColor))
+            }
+            keyboardContainer.clipChildren = false
+            keyboardContainer.clipToPadding = false
+
+            val screenWidth = resources.displayMetrics.widthPixels
+            val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
+            val mainLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                clipChildren = false
+                clipToPadding = false
+                setPadding(dpToPx(4), 0, dpToPx(4), dpToPx(8))
+                layoutParams = FrameLayout.LayoutParams(
+                    keyboardWidthPx,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ).apply {
+                    gravity = keyboardGravity or Gravity.BOTTOM
+                }
+            }
 
         if (isTranslationActive) {
             mainLayout.addView(createTranslationBar())
@@ -888,49 +894,52 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
         } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
             mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
-        } else if (suggestionsEnabled || isTranslationActive) {
+        } else if (suggestionsEnabled || isTranslationActive || isListening) {
             mainLayout.addView(createToolbar())
         }
 
-        val keyboardArea = FrameLayout(this).apply {
-            clipChildren = false
-            clipToPadding = false
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1.0f
-            )
-        }
-        activeKeyboardArea = keyboardArea
-
-        val keysLayout = when (currentViewMode) {
-            ViewMode.QWERTY -> createQwertyLayout()
-            ViewMode.SYMBOLS -> createSymbolsLayout()
-            ViewMode.EMOJIS -> createEmojisLayout()
-            ViewMode.CLIPBOARD -> createClipboardLayout()
-            ViewMode.PC_SHORTCUTS -> createPcShortcutsLayout()
-            ViewMode.HINDI -> createHindiLayout()
-            ViewMode.OCR -> createOcrLayout()
-        }
-        keyboardArea.addView(keysLayout)
-
-        // Initialize and add KeyboardEffectsView
-        if (keyboardEffect != "none") {
-            val effectsView = KeyboardEffectsView(this).apply {
-                setEffectType(keyboardEffect)
-                layoutParams = FrameLayout.LayoutParams(
+            val keyboardArea = FrameLayout(this).apply {
+                clipChildren = false
+                clipToPadding = false
+                layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
+                    0,
+                    1.0f
                 )
             }
-            keyboardArea.addView(effectsView)
-            keyboardEffectsView = effectsView
-        } else {
-            keyboardEffectsView = null
-        }
+            activeKeyboardArea = keyboardArea
 
-        mainLayout.addView(keyboardArea)
-        keyboardContainer.addView(mainLayout)
+            val keysLayout = when (currentViewMode) {
+                ViewMode.QWERTY -> createQwertyLayout()
+                ViewMode.SYMBOLS -> createSymbolsLayout()
+                ViewMode.EMOJIS -> createEmojisLayout()
+                ViewMode.CLIPBOARD -> createClipboardLayout()
+                ViewMode.PC_SHORTCUTS -> createPcShortcutsLayout()
+                ViewMode.HINDI -> createHindiLayout()
+                ViewMode.OCR -> createOcrLayout()
+            }
+            keyboardArea.addView(keysLayout)
+
+            // Initialize and add KeyboardEffectsView
+            if (keyboardEffect != "none") {
+                val effectsView = KeyboardEffectsView(this).apply {
+                    setEffectType(keyboardEffect)
+                    layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+                keyboardArea.addView(effectsView)
+                keyboardEffectsView = effectsView
+            } else {
+                keyboardEffectsView = null
+            }
+
+            mainLayout.addView(keyboardArea)
+            keyboardContainer.addView(mainLayout)
+        } catch (e: Exception) {
+            android.util.Log.e("Keyboard", "Layout error", e)
+        }
 
         if (isSizeAdjustActive) {
             val resizeOverlay = FrameLayout(this).apply {
@@ -1381,23 +1390,18 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createAiGradientButton(): View {
-        val gradientBg = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.parseColor("#8B5CF6"), Color.parseColor("#06B6D4"))
-        ).apply { cornerRadius = dpToPx(keyRadiusDp).toFloat() }
-        val ripple = RippleDrawable(ColorStateList.valueOf(Color.parseColor("#44FFFFFF")), gradientBg, null)
         return FrameLayout(this).apply {
-            background = ripple
+            background = createKeyDrawable(Color.parseColor(themeAccentColor))
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(44), dpToPx(36)).apply {
-                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
             }
-            setOnClickListener { vibrateClick(); showAiAssistantMenu(this) }
+            setOnClickListener { vibrateClick(); showAiChatDialog() }
             addView(TextView(this@GlideTypeKeyboardService).apply {
                 text = "AI"
                 setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                 gravity = Gravity.CENTER
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 layoutParams = FrameLayout.LayoutParams(
@@ -2992,7 +2996,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         } else {
             for (item in clipboardHistory) {
                 val isImage = item.imageUri != null
-                val txt = item.text
+                val txt = item.text ?: ""
                 val isUrl = android.util.Patterns.WEB_URL.matcher(txt).matches()
                 val isEmail = android.util.Patterns.EMAIL_ADDRESS.matcher(txt).matches()
                 val typeBadge = when {
@@ -3042,10 +3046,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 })
                 textCol.addView(TextView(this).apply {
-                    text = if (isImage) "Copied Image" else item.text; setTextColor(Color.WHITE)
+                    text = if (isImage) "Copied Image" else txt; setTextColor(Color.WHITE)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(2), 0, 0) }
-                    setOnClickListener { vibrateClick(); if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(item.text, 1) }
+                    setOnClickListener { vibrateClick(); if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(txt, 1) }
                 })
                 textCol.addView(TextView(this).apply {
                     text = android.text.format.DateUtils.getRelativeTimeSpanString(item.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
@@ -3055,7 +3059,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 card.addView(textCol)
 
                 card.addView(createClipActionIcon(R.drawable.ic_copy, "#FFFFFF") {
-                    (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("clipboard", item.text))
+                    (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("clipboard", txt))
                     Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show()
                 })
                 card.addView(createClipActionIcon(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (item.isPinned) themeAccentColor else "#FFFFFF") { togglePinItem(item) })
@@ -3482,22 +3486,23 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         chatLayout.addView(quickRow)
 
         try {
-            AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            val dialog = AlertDialog.Builder(this@GlideTypeKeyboardService, android.R.style.Theme_Material_Dialog_Alert)
                 .setView(chatLayout)
                 .setPositiveButton("Insert Last Response", null)
                 .setNegativeButton("Close", null)
-                .show().apply {
-                    getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
-                        val lastResponse = messages.lastOrNull { !it.first }?.second
-                        if (lastResponse != null) {
-                            ic?.commitText(lastResponse, 1)
-                            Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
-                            dismiss()
-                        } else {
-                            Toast.makeText(this@GlideTypeKeyboardService, "No AI response yet", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                .create()
+            dialog.window?.setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+            dialog.show()
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)?.setOnClickListener {
+                val lastResponse = messages.lastOrNull { !it.first }?.second
+                if (lastResponse != null) {
+                    ic?.commitText(lastResponse, 1)
+                    Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                } else {
+                    Toast.makeText(this@GlideTypeKeyboardService, "No AI response yet", Toast.LENGTH_SHORT).show()
                 }
+            }
         } catch (e: Exception) {
             Toast.makeText(this, "Chat error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
@@ -3531,10 +3536,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         container.addView(msg)
         return msg
-    }
-
-    private fun showAiAssistantMenu(anchorView: View) {
-        showAiChatDialog()
     }
 
     private fun aiAssist(action: String, text: String, callback: (String?) -> Unit) {
@@ -4432,7 +4433,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         bottomCard.addView(ocrEdit)
 
-        // Action chips row (Copy, Translate, Summarize, AI)
+        // Action chips row (Copy, Translate)
         val chipRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.START
@@ -4441,17 +4442,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
-        val chips = listOf("Copy", "Translate", "Summarize", "AI")
-        val chipColors = listOf("#00D68F", themeAccentColor, "#8B5CF6", "#FF6B00")
-        for ((i, chip) in chips.withIndex()) {
+        for (chip in listOf("Copy", "Translate")) {
+            val chipColor = if (chip == "Copy") "#00D68F" else themeAccentColor
             val chipBtn = TextView(this).apply {
                 text = chip
-                setTextColor(Color.parseColor(chipColors[i]))
+                setTextColor(Color.parseColor(chipColor))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 gravity = Gravity.CENTER
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 setPadding(dpToPx(10), dpToPx(5), dpToPx(10), dpToPx(5))
-                background = createKeyDrawableWithRadius(Color.parseColor(chipColors[i] + "22"), keyRadiusDp)
+                background = createKeyDrawableWithRadius(Color.parseColor(chipColor + "22"), keyRadiusDp)
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     dpToPx(28)
@@ -4460,30 +4460,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     vibrateClick()
                     val text = ocrEdit.text.toString()
                     if (text.isEmpty()) { Toast.makeText(this@GlideTypeKeyboardService, "No text detected", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
-                    when (chip) {
-                        "Copy" -> {
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("ocr", text))
-                            val item = ClipboardItem(text = text, timestamp = System.currentTimeMillis())
-                            clipboardHistory.add(0, item)
-                            savePreferences()
-                            Toast.makeText(this@GlideTypeKeyboardService, "Copied!", Toast.LENGTH_SHORT).show()
-                        }
-                        "Translate" -> {
-                            isTranslationActive = true
-                            translationInputField?.setText(text)
-                            updateKeyboardLayout()
-                        }
-                        "Summarize" -> {
-                            Toast.makeText(this@GlideTypeKeyboardService, "Summarizing...", Toast.LENGTH_SHORT).show()
-                            aiAssist("Summarize", text) { result ->
-                                if (result != null) ocrEdit.setText(result)
-                            }
-                        }
-                        "AI" -> {
-                            currentInputConnection?.commitText(text, 1)
-                            showAiChatDialog()
-                        }
+                    if (chip == "Copy") {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("ocr", text))
+                        val item = ClipboardItem(text = text, timestamp = System.currentTimeMillis())
+                        clipboardHistory.add(0, item)
+                        savePreferences()
+                        Toast.makeText(this@GlideTypeKeyboardService, "Copied!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        isTranslationActive = true
+                        translationInputField?.setText(text)
+                        updateKeyboardLayout()
                     }
                 }
             }
@@ -4758,11 +4745,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun openGalleryForOcr() {
         try {
+            isWaitingForOcrGallery = true
             val intent = Intent(this, OcrGalleryActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
         } catch (e: Exception) {
+            isWaitingForOcrGallery = false
             ocrStatusLabel?.text = "Gallery: ${e.message}"
         }
     }
