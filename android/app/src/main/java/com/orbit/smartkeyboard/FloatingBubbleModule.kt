@@ -92,7 +92,7 @@ class FloatingBubbleModule(reactContext: ReactApplicationContext) : ReactContext
         val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "image/*"
         }
-        activity.startActivityForResult(Intent.createChooser(intent, "Select Background Image"), PICK_IMAGE_REQUEST)
+        activity.startActivityForResult(Intent.createChooser(intent, "Select Background Image"), PICK_THEME_REQUEST)
     }
 
     @ReactMethod
