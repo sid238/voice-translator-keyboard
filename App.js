@@ -210,8 +210,8 @@ export default function App() {
   const [keyboardHeight, setKeyboardHeight] = useState(270);
   const [gestureEnabled, setGestureEnabled] = useState(true);
 
-  const [keySpacing, setKeySpacing] = useState(6);
-  const [longPressDelay, setLongPressDelay] = useState(300);
+  const [keySpacing, setKeySpacing] = useState(8);
+  const [longPressDelay, setLongPressDelay] = useState(600);
   const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
   const [autoCorrectEnabled, setAutoCorrectEnabled] = useState(true);
 
@@ -332,9 +332,9 @@ export default function App() {
           setClipboardLimit(climit);
           const plimit = await FloatingBubble.getIntSetting('pin_limit', 10);
           setPinLimit(plimit);
-          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 6);
+          const spacing = await FloatingBubble.getIntSetting('key_spacing_dp', 8);
           setKeySpacing(spacing);
-          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 300);
+          const delay = await FloatingBubble.getIntSetting('long_press_delay_ms', 600);
           setLongPressDelay(delay);
         }
       }
@@ -943,8 +943,8 @@ export default function App() {
                 saveBooleanPref('vibration_enabled', true);
                 saveBooleanPref('number_row_enabled', true);
                 saveIntPref('keyboard_height_dp', 270);
-                saveIntPref('key_spacing_dp', 6);
-                saveIntPref('long_press_delay_ms', 300);
+                saveIntPref('key_spacing_dp', 8);
+                saveIntPref('long_press_delay_ms', 600);
                 Alert.alert("Reset", "All configuration variables reset to default values.");
               }}
             >
