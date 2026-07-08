@@ -1,16 +1,14 @@
 package com.orbit.smartkeyboard
 
-import android.app.Activity
-import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 
-class OcrGalleryActivity : Activity() {
+class OcrGalleryActivity : ComponentActivity() {
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             try {

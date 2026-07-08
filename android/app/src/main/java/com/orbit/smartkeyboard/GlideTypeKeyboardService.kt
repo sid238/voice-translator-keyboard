@@ -3037,6 +3037,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         fun loadEmojiGrid(categoryIndex: Int) {
             contentArea.removeAllViews()
             
+            val categoryEmojis = emojiCategories[categoryIndex].second
             val gridView = GridView(this@GlideTypeKeyboardService).apply {
                 numColumns = 7
                 verticalSpacing = dpToPx(4)
@@ -3048,7 +3049,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 )
                 setPadding(dpToPx(6), dpToPx(6), dpToPx(6), dpToPx(6))
                 
-                val categoryEmojis = emojiCategories[categoryIndex].second
                 adapter = object : android.widget.BaseAdapter() {
                     override fun getCount(): Int = categoryEmojis.size
                     override fun getItem(position: Int): Any = categoryEmojis[position]
@@ -3065,25 +3065,25 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         return textView
                     }
                 }
-                gridView.onItemClickListener = android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
-                    val selectedEmoji = categoryEmojis[position]
-                    vibrateClick()
-                    playClick(100)
-                    addRecentEmoji(selectedEmoji)
-                    val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
-                        else if (isTranslationActive && translationInputField != null) translationInputField
-                        else null
-                    if (targetField != null) {
-                        val et = targetField!!
-                        val start = et.selectionStart
-                        val end = et.selectionEnd
-                        et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
-                    } else {
-                        currentInputConnection?.commitText(selectedEmoji, 1)
-                    }
-                    if (categoryIndex == 0) {
-                        loadEmojiGrid(categoryIndex)
-                    }
+            }
+            gridView.onItemClickListener = android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
+                val selectedEmoji = categoryEmojis[position]
+                vibrateClick()
+                playClick(100)
+                addRecentEmoji(selectedEmoji)
+                val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                    else if (isTranslationActive && translationInputField != null) translationInputField
+                    else null
+                if (targetField != null) {
+                    val et = targetField!!
+                    val start = et.selectionStart
+                    val end = et.selectionEnd
+                    et.text.replace(Math.min(start, end), Math.max(start, end), selectedEmoji)
+                } else {
+                    currentInputConnection?.commitText(selectedEmoji, 1)
+                }
+                if (categoryIndex == 0) {
+                    loadEmojiGrid(categoryIndex)
                 }
             }
             contentArea.addView(gridView)
