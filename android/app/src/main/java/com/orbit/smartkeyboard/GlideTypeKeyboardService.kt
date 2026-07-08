@@ -54,9 +54,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private val lifecycleRegistry = LifecycleRegistry(this)
 
-    override fun getLifecycle(): Lifecycle {
-        return lifecycleRegistry
-    }
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
 
     private lateinit var keyboardContainer: FrameLayout
     private var currentViewMode = ViewMode.QWERTY
@@ -1964,7 +1963,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 val location = IntArray(2)
                                 v.getLocationOnScreen(location)
                                 val keyboardAreaLoc = IntArray(2)
-                                keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                                activeKeyboardArea?.getLocationOnScreen(keyboardAreaLoc)
                                 val relativeX = location[0] - keyboardAreaLoc[0] + event.x
                                 val relativeY = location[1] - keyboardAreaLoc[1] + event.y
                                 keyboardEffectsView?.addTrailPoint(relativeX, relativeY)
@@ -2010,7 +2009,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 val location = IntArray(2)
                                 v.getLocationOnScreen(location)
                                 val keyboardAreaLoc = IntArray(2)
-                                keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                                activeKeyboardArea?.getLocationOnScreen(keyboardAreaLoc)
                                 val relativeX = location[0] - keyboardAreaLoc[0] + event.x
                                 val relativeY = location[1] - keyboardAreaLoc[1] + event.y
                                 keyboardEffectsView?.addTrailPoint(relativeX, relativeY)
@@ -4001,7 +4000,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         val location = IntArray(2)
                         it.getLocationOnScreen(location)
                         val keyboardAreaLoc = IntArray(2)
-                        keyboardArea.getLocationOnScreen(keyboardAreaLoc)
+                        activeKeyboardArea?.getLocationOnScreen(keyboardAreaLoc)
                         val relativeX = location[0] - keyboardAreaLoc[0] + it.width / 2f
                         val relativeY = location[1] - keyboardAreaLoc[1] + it.height / 2f
                         keyboardEffectsView?.triggerEffect(relativeX, relativeY, it.width, it.height)
