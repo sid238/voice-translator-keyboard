@@ -34,6 +34,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.BlurMaskFilter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.io.OutputStreamWriter
@@ -84,7 +85,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
     private var keySpacingDp = 3
+    private var keyRadiusDp = 16
     private var lastSpacePressTime: Long = 0
+    private var adaptiveThemeEnabled = false
+    private var lastDetectedApp = ""
     private val selectedLanguages = mutableListOf<String>()
     private var activeLanguageIndex = 0
 
@@ -356,6 +360,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         vibrationEnabled = prefs.getBoolean("vibration_enabled", true)
         soundEnabled = prefs.getBoolean("sound_enabled", false)
         numberRowEnabled = prefs.getBoolean("number_row_enabled", true)
+        adaptiveThemeEnabled = prefs.getBoolean("adaptive_theme", true)
         // gesture disabled
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
@@ -491,6 +496,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
         }
 
+        if (adaptiveThemeEnabled && themeName != "dynamic") {
+            val currentApp = detectForegroundApp()
+            if (currentApp != lastDetectedApp) {
+                lastDetectedApp = currentApp
+                applyAdaptiveTheme(currentApp)
+            }
+        }
+
         val clipJson = prefs.getString(PREF_KEY_CLIPBOARD, null)
         if (clipJson != null) {
             try {
@@ -519,6 +532,71 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             )
             savePreferences()
         }
+    }
+
+    private fun detectForegroundApp(): String {
+        try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager ?: return ""
+            @Suppress("DEPRECATION")
+            val tasks = am.getRunningTasks(1)
+            if (tasks.isNotEmpty()) {
+                val pkg = tasks[0].topActivity?.packageName ?: ""
+                return pkg
+            }
+        } catch (_: Exception) {}
+        return ""
+    }
+
+    private fun applyAdaptiveTheme(packageName: String) {
+        when {
+            packageName.contains("whatsapp") -> {
+                themeAccentColor = "#25D366"
+                themeSpecialKeyBg = "#1B3A2A"
+                themeRegularKeyBg = "#0F281C"
+                themeToolbarBg = "#0D1F15"
+            }
+            packageName.contains("instagram") || packageName.contains("com.instagram.android") -> {
+                themeAccentColor = "#E1306C"
+                themeSpecialKeyBg = "#2E1B28"
+                themeRegularKeyBg = "#1F101C"
+                themeToolbarBg = "#1A0D16"
+            }
+            packageName.contains("telegram") || packageName.contains("org.telegram") -> {
+                themeAccentColor = "#0088CC"
+                themeSpecialKeyBg = "#1A2A38"
+                themeRegularKeyBg = "#0F1E2B"
+                themeToolbarBg = "#0B1720"
+            }
+            packageName.contains("twitter") || packageName.contains("com.twitter.android") -> {
+                themeAccentColor = "#1D9BF0"
+                themeSpecialKeyBg = "#192A38"
+                themeRegularKeyBg = "#0F1E2B"
+                themeToolbarBg = "#0B1720"
+            }
+            packageName.contains("facebook") -> {
+                themeAccentColor = "#1877F2"
+                themeSpecialKeyBg = "#192338"
+                themeRegularKeyBg = "#0F1A2B"
+                themeToolbarBg = "#0B1420"
+            }
+            packageName.contains("youtube") || packageName.contains("com.google.android.youtube") -> {
+                themeAccentColor = "#FF0000"
+                themeSpecialKeyBg = "#2E1B1B"
+                themeRegularKeyBg = "#1F1010"
+                themeToolbarBg = "#1A0D0D"
+            }
+            packageName.contains("snapchat") -> {
+                themeAccentColor = "#FFFC00"
+                themeSpecialKeyBg = "#2E2D1B"
+                themeRegularKeyBg = "#1F1E10"
+                themeToolbarBg = "#FFFC00"
+                themeTextColor = Color.BLACK
+                return
+            }
+            else -> return
+        }
+        themeTextColor = Color.WHITE
+        themeBgColor = "#0F0F1A"
     }
 
     private fun savePreferences() {
@@ -791,7 +869,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(0, 0, 0, dpToPx(8))
+            setPadding(dpToPx(4), 0, dpToPx(4), dpToPx(8))
             layoutParams = FrameLayout.LayoutParams(
                 keyboardWidthPx,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -878,7 +956,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
             // Top Drag Handle (Height)
             val topDragHandle = FrameLayout(this).apply {
-                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
                 layoutParams = FrameLayout.LayoutParams(
                     dpToPx(120),
                     dpToPx(16)
@@ -930,7 +1008,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
             // Left Drag Handle (Width / Left edge)
             val leftDragHandle = FrameLayout(this).apply {
-                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
                 layoutParams = FrameLayout.LayoutParams(
                     dpToPx(16),
                     dpToPx(100)
@@ -981,7 +1059,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
             // Right Drag Handle (Width / Right edge)
             val rightDragHandle = FrameLayout(this).apply {
-                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
                 layoutParams = FrameLayout.LayoutParams(
                     dpToPx(16),
                     dpToPx(100)
@@ -1032,7 +1110,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val centerToggleBtn = Button(this).apply {
                 text = "Center"
                 setTextColor(Color.WHITE)
-                background = createKeyDrawable(Color.parseColor("#444444"), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor("#444444"), 4)
                 layoutParams = FrameLayout.LayoutParams(
                     dpToPx(80),
                     dpToPx(35)
@@ -1052,7 +1130,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val doneBtn = Button(this).apply {
                 text = "Done"
                 setTextColor(Color.WHITE)
-                background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+                background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
                 layoutParams = FrameLayout.LayoutParams(
                     dpToPx(80),
                     dpToPx(35)
@@ -1076,7 +1154,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private fun createToolbarIconButton(resId: Int, isRedBackground: Boolean = false, onClick: () -> Unit): View {
         val container = FrameLayout(this).apply {
             val bgColor = if (isRedBackground) Color.parseColor("#D32F2F") else Color.TRANSPARENT
-            background = createKeyDrawable(bgColor, dpToPx(6))
+            background = createKeyDrawable(bgColor)
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
@@ -1110,21 +1188,40 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             return createFontSelectorView()
         }
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(40)
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor(themeToolbarBg))
+        val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(52)
+
+        // Glassmorphism floating toolbar wrapper
+        val wrapper = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 toolbarHeight
             )
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(6), 0, dpToPx(6), 0)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
         }
 
+        val toolbarBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(keyRadiusDp).toFloat()
+            setColor(Color.parseColor("#CC1A1A2E"))
+            val accentDimmed = Color.parseColor(themeAccentColor)
+            setStroke(dpToPx(1), Color.argb(40, Color.red(accentDimmed), Color.green(accentDimmed), Color.blue(accentDimmed)))
+        }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = toolbarBg
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(4), 0, dpToPx(4), 0)
+        }
+        wrapper.addView(toolbar)
+
         if (isToolbarCollapsed) {
+            toolbar.removeAllViews()
             val line = View(this).apply {
-                background = createKeyDrawable(Color.parseColor("#888888"), dpToPx(2))
+                background = createKeyDrawableWithRadius(Color.parseColor("#88FFFFFF"), 2)
                 layoutParams = FrameLayout.LayoutParams(dpToPx(60), dpToPx(4)).apply {
                     gravity = Gravity.CENTER
                 }
@@ -1187,116 +1284,30 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 buttonsContainer.addView(stopBtn)
             } else {
                 if (translationFeatureEnabled) {
-                    val active = isTranslationActive
-                    val activeBgColor = if (active) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                    val transBtn = FrameLayout(this).apply {
-                        background = createKeyDrawable(activeBgColor, dpToPx(6))
-                        isClickable = true
-                        isFocusable = true
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                            setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                        }
-                        setOnClickListener {
-                            vibrateClick()
-                            isTranslationActive = !isTranslationActive
-                            updateKeyboardLayout()
-                        }
+                    val transBtn = createToolbarPillButton(R.drawable.ic_translate, isTranslationActive) {
+                        isTranslationActive = !isTranslationActive
+                        updateKeyboardLayout()
                     }
-                    val transIcon = ImageView(this).apply {
-                        setImageResource(R.drawable.ic_translate)
-                        setColorFilter(Color.WHITE)
-                        layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                            gravity = Gravity.CENTER
-                        }
-                    }
-                    transBtn.addView(transIcon)
                     buttonsContainer.addView(transBtn)
                 }
 
-                val aiAssistBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(Color.TRANSPARENT, dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        showAiAssistantMenu(it)
-                    }
-                }
-                val aiAssistIcon = TextView(this).apply {
-                    text = "AI"
-                    setTextColor(Color.parseColor(themeAccentColor))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-                    gravity = Gravity.CENTER
-                    setTypeface(null, android.graphics.Typeface.BOLD)
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-                aiAssistBtn.addView(aiAssistIcon)
-                buttonsContainer.addView(aiAssistBtn)
+                // AI button - gradient, centered, Orbit identity
+                buttonsContainer.addView(createAiGradientButton())
 
-                val clipActive = currentViewMode == ViewMode.CLIPBOARD
-                val clipBgColor = if (clipActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                val clipBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(clipBgColor, dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        currentViewMode = if (clipActive) ViewMode.QWERTY else ViewMode.CLIPBOARD
-                        updateKeyboardLayout()
-                    }
+                val clipBtn = createToolbarPillButton(R.drawable.ic_clipboard, currentViewMode == ViewMode.CLIPBOARD) {
+                    currentViewMode = if (currentViewMode == ViewMode.CLIPBOARD) ViewMode.QWERTY else ViewMode.CLIPBOARD
+                    updateKeyboardLayout()
                 }
-                val clipIcon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_clipboard)
-                    setColorFilter(Color.WHITE)
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-                clipBtn.addView(clipIcon)
                 buttonsContainer.addView(clipBtn)
 
-                val pcActive = currentViewMode == ViewMode.PC_SHORTCUTS
-                val pcBgColor = if (pcActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                val pcBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(pcBgColor, dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        currentViewMode = if (pcActive) ViewMode.QWERTY else ViewMode.PC_SHORTCUTS
-                        updateKeyboardLayout()
-                    }
+                val pcBtn = createToolbarPillButton(R.drawable.ic_pc, currentViewMode == ViewMode.PC_SHORTCUTS) {
+                    currentViewMode = if (currentViewMode == ViewMode.PC_SHORTCUTS) ViewMode.QWERTY else ViewMode.PC_SHORTCUTS
+                    updateKeyboardLayout()
                 }
-                val pcIcon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_pc)
-                    setColorFilter(Color.WHITE)
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-                pcBtn.addView(pcIcon)
                 buttonsContainer.addView(pcBtn)
 
-                val heightBtn = createToolbarIconButton(R.drawable.ic_height) {
-                    showSizeAdjustmentDialog()
-                }
-                buttonsContainer.addView(heightBtn)
-
-                val settingsBtn = createToolbarIconButton(R.drawable.ic_settings) {
+                buttonsContainer.addView(createToolbarIconButton(R.drawable.ic_height) { showSizeAdjustmentDialog() })
+                buttonsContainer.addView(createToolbarIconButton(R.drawable.ic_settings) {
                     val launchIntent = packageManager.getLaunchIntentForPackage("com.orbit.smartkeyboard")
                     if (launchIntent != null) {
                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1307,79 +1318,28 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         }
                         startActivity(intent)
                     }
-                }
-                buttonsContainer.addView(settingsBtn)
+                })
 
                 if (voiceDictationEnabled) {
-                    val micBtn = createToolbarIconButton(R.drawable.ic_mic, isListening) {
-                        if (isListening) {
-                            stopVoiceInput()
-                        } else {
-                            startVoiceInput()
-                        }
-                    }
-                    buttonsContainer.addView(micBtn)
+                    buttonsContainer.addView(createToolbarIconButton(R.drawable.ic_mic, isListening) {
+                        if (isListening) stopVoiceInput() else startVoiceInput()
+                    })
                 }
 
-                // Camera OCR Button
-                val cameraActive = currentViewMode == ViewMode.OCR
-                val cameraBgColor = if (cameraActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                val cameraBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(cameraBgColor, dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        toggleOcrMode()
-                    }
-                }
-                val cameraIcon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_camera)
-                    setColorFilter(themeTextColor)
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-                cameraBtn.addView(cameraIcon)
-                buttonsContainer.addView(cameraBtn)
-
-                // Font Changer Button immediately next to the mic button
-                val fontActive = currentKeyboardFont != KeyboardFont.NORMAL
-                val fontBgColor = if (fontActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
-                val fontBtn = FrameLayout(this).apply {
-                    background = createKeyDrawable(fontBgColor, dpToPx(6))
-                    isClickable = true
-                    isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
-                        setMargins(dpToPx(4), 0, dpToPx(4), 0)
-                    }
-                    setOnClickListener {
-                        vibrateClick()
-                        isFontSelectorActive = !isFontSelectorActive
-                        updateKeyboardLayout()
-                    }
-                }
-                val fontIcon = ImageView(this).apply {
-                    setImageResource(R.drawable.ic_font)
-                    setColorFilter(Color.WHITE)
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
-                        gravity = Gravity.CENTER
-                    }
-                }
-                fontBtn.addView(fontIcon)
-                buttonsContainer.addView(fontBtn)
+                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_camera, currentViewMode == ViewMode.OCR) { toggleOcrMode() })
+                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_font, currentKeyboardFont != KeyboardFont.NORMAL) {
+                    isFontSelectorActive = !isFontSelectorActive
+                    updateKeyboardLayout()
+                })
 
                 if (isLandscape) {
-                    val pcButtons = listOf(
+                    val pcActions = listOf(
                         Pair(R.drawable.ic_select_all) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_A) },
                         Pair(R.drawable.ic_copy) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_C) },
                         Pair(R.drawable.ic_paste) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_V) },
                         Pair(R.drawable.ic_undo) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_Z) },
                         Pair(R.drawable.ic_redo) { sendCtrlShortcut(android.view.KeyEvent.KEYCODE_Y) },
-                        Pair(R.drawable.ic_left) { 
+                        Pair(R.drawable.ic_left) {
                             currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
                             currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_LEFT))
                         },
@@ -1388,12 +1348,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DPAD_RIGHT))
                         }
                     )
-                    for (btn in pcButtons) {
-                        val iconBtn = createToolbarIconButton(btn.first) {
-                            vibrateClick()
-                            btn.second()
-                        }
-                        buttonsContainer.addView(iconBtn)
+                    for (act in pcActions) {
+                        buttonsContainer.addView(createToolbarIconButton(act.first) { vibrateClick(); act.second() })
                     }
                 }
             }
@@ -1401,7 +1357,53 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             toolbar.addView(scrollView)
         }
 
-        return toolbar
+        return wrapper
+    }
+
+    private fun createToolbarPillButton(iconRes: Int, isActive: Boolean, onClick: () -> Unit): View {
+        val bgColor = if (isActive) Color.parseColor(themeAccentColor) else Color.parseColor("#44222222")
+        return FrameLayout(this).apply {
+            background = createKeyDrawable(bgColor)
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            }
+            setOnClickListener { vibrateClick(); onClick() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(iconRes)
+                setColorFilter(if (isActive) Color.WHITE else Color.parseColor("#AAFFFFFF"))
+                layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { gravity = Gravity.CENTER }
+            })
+        }
+    }
+
+    private fun createAiGradientButton(): View {
+        val gradientBg = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.parseColor("#8B5CF6"), Color.parseColor("#06B6D4"))
+        ).apply { cornerRadius = dpToPx(keyRadiusDp).toFloat() }
+        val ripple = RippleDrawable(ColorStateList.valueOf(Color.parseColor("#44FFFFFF")), gradientBg, null)
+        return FrameLayout(this).apply {
+            background = ripple
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(44), dpToPx(36)).apply {
+                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+            }
+            setOnClickListener { vibrateClick(); showAiAssistantMenu(this) }
+            addView(TextView(this@GlideTypeKeyboardService).apply {
+                text = "AI"
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply { gravity = Gravity.CENTER }
+            })
+        }
     }
 
         private fun createNavigationToolbar(title: String): View {
@@ -1421,7 +1423,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             gravity = Gravity.CENTER
-            background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(70), dpToPx(30))
             setOnClickListener {
                 vibrateClick()
@@ -1621,7 +1623,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     } else {
                         Color.parseColor(themeRegularKeyBg)
                     }
-                    background = createKeyDrawable(bgColor, dpToPx(6))
+                    background = createKeyDrawable(bgColor)
                     isClickable = true
                     isFocusable = true
                     layoutParams = FrameLayout.LayoutParams(
@@ -1861,6 +1863,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 startKeyTime = System.currentTimeMillis()
                                 keyLongPressed = false
                                 v.isPressed = true
+                                animateKeyPress(v, true)
                                 showKeyPreview(v, key)
                                 handler.postDelayed(keyLongPressRunnable, longPressDelayMs.toLong())
                                 startPressEffect(v, event)
@@ -1877,6 +1880,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             MotionEvent.ACTION_UP -> {
                                 handler.removeCallbacks(keyLongPressRunnable)
                                 v.isPressed = false
+                                animateKeyPress(v, false)
                                 hideKeyPreview()
                                 endPressEffect()
                                 if (keyLongPressed) {
@@ -1900,6 +1904,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             MotionEvent.ACTION_CANCEL -> {
                                 handler.removeCallbacks(keyLongPressRunnable)
                                 v.isPressed = false
+                                animateKeyPress(v, false)
                                 hideKeyPreview()
                                 endPressEffect()
                             }
@@ -2548,7 +2553,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
                 setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
-                background = createKeyDrawable(bg, dpToPx(4))
+                background = createKeyDrawableWithRadius(bg, 4)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2651,7 +2656,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 4)
             layoutParams = LinearLayout.LayoutParams(
                 dpToPx(45),
                 dpToPx(30)
@@ -2690,7 +2695,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val emojiBackspace = ImageView(this).apply {
             setImageResource(R.drawable.ic_backspace)
             setColorFilter(Color.WHITE)
-            background = createKeyDrawable(Color.parseColor(themeSpecialKeyBg), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 4)
             val pad = dpToPx(5)
             setPadding(pad, pad, pad, pad)
             layoutParams = LinearLayout.LayoutParams(
@@ -2811,7 +2816,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             gravity = Gravity.CENTER
                             val itemSize = dpToPx(42)
                             layoutParams = AbsListView.LayoutParams(itemSize, itemSize)
-                            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                            background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
                         }
                         textView.text = categoryEmojis[position]
                         return textView
@@ -2910,7 +2915,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.parseColor("#FF1744"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
-            background = createKeyDrawable(Color.parseColor("#2C1E21"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#2C1E21"), 4)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2929,7 +2934,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.parseColor("#FF8F00"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             setPadding(dpToPx(8), 0, dpToPx(8), 0)
-            background = createKeyDrawable(Color.parseColor("#2C261E"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#2C261E"), 4)
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -2942,7 +2947,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         clipToolbar.addView(clearUnpinnedBtn)
 
         val backspaceBtn = FrameLayout(this).apply {
-            background = createKeyDrawable(Color.parseColor("#2E2E2E"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#2E2E2E"), 4)
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dpToPx(40), ViewGroup.LayoutParams.MATCH_PARENT).apply {
@@ -3158,7 +3163,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     val browserIcon = ImageView(this).apply {
                         setImageResource(R.drawable.ic_browser)
                         setColorFilter(Color.parseColor("#3498db"))
-                        background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                        background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
                         isClickable = true
                         isFocusable = true
                         layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(35)).apply {
@@ -3187,7 +3192,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 val pinBtn = ImageView(this).apply {
                     setImageResource(if (item.isPinned) R.drawable.ic_pin else R.drawable.ic_unpin)
                     setColorFilter(if (item.isPinned) Color.parseColor(themeAccentColor) else themeTextColor)
-                    background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                    background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
                     isClickable = true
                     isFocusable = true
                     layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
@@ -3203,7 +3208,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 val delBtn = ImageView(this).apply {
                     setImageResource(R.drawable.ic_delete)
                     setColorFilter(Color.parseColor("#FF1744"))
-                    background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+                    background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
                     isClickable = true
                     isFocusable = true
                     layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
@@ -3249,15 +3254,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
     }
 
-    private fun createKeyDrawable(color: Int, radius: Int): RippleDrawable {
+    private fun createKeyDrawable(color: Int): RippleDrawable {
+        val r = dpToPx(keyRadiusDp)
         val content = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = radius.toFloat()
+            cornerRadius = r.toFloat()
             setColor(color)
         }
         val mask = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = radius.toFloat()
+            cornerRadius = r.toFloat()
             setColor(Color.WHITE)
         }
         return RippleDrawable(
@@ -3265,6 +3271,31 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             content,
             mask
         )
+    }
+
+    private fun createKeyDrawableWithRadius(color: Int, customRadiusDp: Int): RippleDrawable {
+        val r = dpToPx(customRadiusDp)
+        val content = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = r.toFloat()
+            setColor(color)
+        }
+        val mask = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = r.toFloat()
+            setColor(Color.WHITE)
+        }
+        return RippleDrawable(
+            ColorStateList.valueOf(Color.parseColor("#44FFFFFF")),
+            content,
+            mask
+        )
+    }
+
+    private fun animateKeyPress(v: View, pressDown: Boolean) {
+        val duration = 80L
+        val scale = if (pressDown) 0.92f else 1.0f
+        v.animate().scaleX(scale).scaleY(scale).setDuration(duration).start()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -3285,7 +3316,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         val closeBtn = FrameLayout(this).apply {
-            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
@@ -3312,7 +3343,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#252525"), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30)).apply {
                 setMargins(dpToPx(4), 0, 0, 0)
             }
@@ -3337,7 +3368,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
-            background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#252525"), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(45), dpToPx(30))
             setOnClickListener {
                 vibrateClick()
@@ -3409,7 +3440,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         val voiceTranslateBtn = FrameLayout(this).apply {
-            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.TRANSPARENT, 4)
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(30)).apply {
@@ -3439,7 +3470,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             gravity = Gravity.CENTER
-            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply {
                 setMargins(0, 0, dpToPx(4), 0)
             }
@@ -3968,7 +3999,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 val keyLayout = RelativeLayout(context).apply {
                     val isActiveModifier = (key == "Ctrl" && isCtrlActive) || (key == "Alt" && isAltActive)
                     val bgColor = if (isActiveModifier) Color.parseColor(themeAccentColor) else Color.parseColor(themeSpecialKeyBg)
-                    background = createKeyDrawable(bgColor, dpToPx(6))
+                    background = createKeyDrawable(bgColor)
                     isClickable = workable
                     isFocusable = workable
                     alpha = if (workable) 1.0f else 0.4f
@@ -4268,7 +4299,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             layoutParams = LinearLayout.LayoutParams(dpToPx(8), dpToPx(8)).apply {
                 setMargins(0, 0, dpToPx(6), 0)
             }
-            background = createKeyDrawable(Color.parseColor("#00D68F"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#00D68F"), 4)
         }
         scanStatusRow.addView(scanIndicator)
 
@@ -4334,7 +4365,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#4F8CFF"), dpToPx(6))
+            background = createKeyDrawable(Color.parseColor("#4F8CFF"))
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 dpToPx(34),
@@ -4355,7 +4386,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#FF6B00"), dpToPx(6))
+            background = createKeyDrawable(Color.parseColor("#FF6B00"))
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 dpToPx(34),
@@ -4376,7 +4407,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(6))
+            background = createKeyDrawable(Color.parseColor(themeAccentColor))
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 dpToPx(34),
@@ -4397,7 +4428,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(6))
+            background = createKeyDrawable(Color.parseColor("#33FFFFFF"))
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 dpToPx(34),
@@ -4416,7 +4447,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         container.addView(overlay)
 
         val closeBtn = FrameLayout(this).apply {
-            background = createKeyDrawable(Color.parseColor("#80000000"), dpToPx(16))
+            background = createKeyDrawable(Color.parseColor("#80000000"))
             isClickable = true
             isFocusable = true
             layoutParams = FrameLayout.LayoutParams(
@@ -4462,7 +4493,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setHintTextColor(Color.GRAY)
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
+            background = createKeyDrawableWithRadius(Color.parseColor("#33FFFFFF"), 4)
             maxLines = 3
             isSingleLine = false
             layoutParams = LinearLayout.LayoutParams(
