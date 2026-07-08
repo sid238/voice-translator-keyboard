@@ -74,14 +74,15 @@ class KeyboardEffectsView @JvmOverloads constructor(
     }
 
     fun triggerEffect(x: Float, y: Float, width: Int, height: Int) {
+        // Clear previous effects on each new touch
         when (effectType) {
-            "fire" -> spawnFire(x, y)
-            "water_ripple" -> spawnRipple(x, y)
-            "matrix_rain" -> spawnMatrix(x, y, width, height)
-            "galaxy" -> spawnGalaxy(x, y)
-            "mechanical_flash" -> spawnMechanicalFlash(x, y, width, height)
+            "fire" -> { fireParticles.clear(); spawnFire(x, y) }
+            "water_ripple" -> { ripples.clear(); spawnRipple(x, y) }
+            "matrix_rain" -> { matrixStreams.clear(); spawnMatrix(x, y, width, height) }
+            "galaxy" -> { galaxyParticles.clear(); spawnGalaxy(x, y) }
+            "mechanical_flash" -> { mechanicalFlashes.clear(); spawnMechanicalFlash(x, y, width, height) }
             "neon_trail" -> spawnNeonTap(x, y)
-            "rgb_glow" -> spawnRgbGlow(x, y, width, height)
+            "rgb_glow" -> { rgbGlows.clear(); spawnRgbGlow(x, y, width, height) }
         }
         postInvalidateOnAnimation()
     }
@@ -129,11 +130,11 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
     private fun spawnFire(x: Float, y: Float) {
         // Spawn fire particles rising from touch point
-        for (i in 0..15) {
-            val vx = -3f + random.nextFloat() * 6f
-            val vy = -4f - random.nextFloat() * 8f
-            val size = 12f + random.nextFloat() * 18f
-            val life = 200f + random.nextFloat() * 300f
+        for (i in 0..22) {
+            val vx = -4f + random.nextFloat() * 8f
+            val vy = -3f - random.nextFloat() * 6f
+            val size = 10f + random.nextFloat() * 16f
+            val life = 600f + random.nextFloat() * 400f
             // Fire colors: Yellow, Orange, Red
             val colors = arrayOf("#FFD700", "#FF8C00", "#FF4500", "#FF0000")
             val colorStr = colors[random.nextInt(colors.size)]
@@ -155,7 +156,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
     private fun spawnRipple(x: Float, y: Float) {
         val color = Color.argb(180, 79, 140, 255) // Semi-transparent blue
-        ripples.add(WaterRipple(x, y, 0f, 180f, color, 400f, 0f))
+        ripples.add(WaterRipple(x, y, 0f, 220f, color, 800f, 0f))
     }
 
     // --- MATRIX RAIN ---
@@ -196,14 +197,14 @@ class KeyboardEffectsView @JvmOverloads constructor(
     )
 
     private fun spawnGalaxy(x: Float, y: Float) {
-        for (i in 0..20) {
+        for (i in 0..28) {
             val angle = random.nextFloat() * 2 * Math.PI.toFloat()
-            val speed = 2f + random.nextFloat() * 8f
-            val life = 400 + random.nextInt(400)
+            val speed = 2f + random.nextFloat() * 6f
+            val life = 800 + random.nextInt(400)
             // Galaxy colors: Neon Cyan, Violet, Pink, White
             val colors = arrayOf("#00FFFF", "#8A2BE2", "#FF007F", "#FFFFFF")
             val color = Color.parseColor(colors[random.nextInt(colors.size)])
-            val size = 6f + random.nextFloat() * 8f
+            val size = 5f + random.nextFloat() * 7f
             galaxyParticles.add(GalaxyParticle(x, y, (cos(angle) * speed).toFloat(), (sin(angle) * speed).toFloat(), color, size, life.toLong()))
         }
     }
@@ -288,7 +289,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val iterator = fireParticles.iterator()
             while (iterator.hasNext()) {
                 val p = iterator.next()
-                p.life -= 16f // Roughly 16ms per frame
+                p.life -= 10f
                 if (p.life <= 0) {
                     iterator.remove()
                     continue
@@ -354,7 +355,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             while (iterator.hasNext()) {
                 val s = iterator.next()
                 s.y += s.speed
-                s.alpha -= 4 // Fade slowly
+                s.alpha -= 2
                 if (s.alpha <= 0 || s.y > height) {
                     iterator.remove()
                     continue
@@ -436,7 +437,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val iterator = mechanicalFlashes.iterator()
             while (iterator.hasNext()) {
                 val f = iterator.next()
-                f.alpha -= 20
+                f.alpha -= 4
                 if (f.alpha <= 0) {
                     iterator.remove()
                     continue
@@ -461,8 +462,8 @@ class KeyboardEffectsView @JvmOverloads constructor(
             val iterator = rgbGlows.iterator()
             while (iterator.hasNext()) {
                 val g = iterator.next()
-                g.scale += 0.08f
-                g.alpha -= 15
+                g.scale += 0.03f
+                g.alpha -= 4
                 if (g.alpha <= 0) {
                     iterator.remove()
                     continue

@@ -1169,9 +1169,10 @@ export default function App() {
         <View style={styles.socialRow}>
           {[
             { label: 'GitHub', url: 'https://github.com/sid238/voice-translator-keyboard' },
-            { label: 'Telegram', url: 'https://t.me' },
-            { label: 'Website', url: 'https://google.com' },
-            { label: 'Email', url: 'mailto:support@orbit.com' },
+            { label: 'Telegram', url: 'https://t.me/Gt_zorvex' },
+            { label: 'Instagram', url: 'https://instagram.com/ethix_xsid' },
+            { label: 'Email', url: 'mailto:ethixbhai@gmail.com' },
+            { label: 'Website', url: 'https://zoptimus.com' },
           ].map((soc, idx) => (
             <TouchableOpacity
               key={idx}
@@ -1185,7 +1186,7 @@ export default function App() {
 
         <View style={styles.glassCopyright}>
           <Text style={styles.copyrightText}>
-            © 2026 NeoType Inc. All rights reserved. Registered flagship layout.
+            Developed by Zorvex
           </Text>
         </View>
       </ScrollView>
@@ -1196,7 +1197,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, paddingBottom: isKeyboardVisible ? 0 : 80 }}>
         {activeTab === 'home' && renderHome()}
         {activeTab === 'settings' && renderSettings()}
         {activeTab === 'about' && renderAbout()}

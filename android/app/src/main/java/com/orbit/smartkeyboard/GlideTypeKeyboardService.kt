@@ -49,6 +49,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.Barcode
 
 class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
@@ -2166,7 +2168,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     currentViewMode = ViewMode.QWERTY
                     updateKeyboardLayout()
                 }
-                "😊", "☺", "😀" -> {
+                "emoji" -> {
                     currentViewMode = ViewMode.EMOJIS
                     updateKeyboardLayout()
                 }
@@ -2247,7 +2249,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 currentViewMode = ViewMode.QWERTY
                 updateKeyboardLayout()
             }
-            "😊", "☺", "😀" -> {
+            "emoji" -> {
                 currentViewMode = ViewMode.EMOJIS
                 updateKeyboardLayout()
             }
@@ -3352,12 +3354,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                     isClickable = true
                     isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(35)).apply {
-                        setMargins(0, 0, dpToPx(6), 0)
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
+                        setMargins(dpToPx(1), 0, dpToPx(7), 0)
                     }
                     setOnClickListener {
                         vibrateClick()
-                        togglePinItem(item)
+                        handler.postDelayed({ togglePinItem(item) }, 100)
                     }
                 }
                 itemRow.addView(pinBtn)
@@ -3368,10 +3370,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
                     isClickable = true
                     isFocusable = true
-                    layoutParams = LinearLayout.LayoutParams(dpToPx(35), dpToPx(35))
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
+                        setMargins(0, 0, 0, 0)
+                    }
                     setOnClickListener {
                         vibrateClick()
-                        deleteClipboardItem(item)
+                        handler.postDelayed({ deleteClipboardItem(item) }, 100)
                     }
                 }
                 itemRow.addView(delBtn)
@@ -4246,7 +4250,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setBackgroundColor(Color.parseColor("#CC000000"))
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dpToPx(75)
+                dpToPx(110)
             ).apply {
                 gravity = Gravity.BOTTOM
             }
@@ -4254,9 +4258,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         val scanTextLabel = TextView(this).apply {
-            text = "Camera OCR Active. Point at text..."
+            text = "Camera OCR Active. Point at text or QR code..."
             setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -4264,6 +4268,21 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             )
         }
         overlay.addView(scanTextLabel)
+
+        val qrResultLabel = TextView(this).apply {
+            text = ""
+            setTextColor(Color.parseColor("#00D68F"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dpToPx(2), 0, 0)
+            }
+        }
+        overlay.addView(qrResultLabel)
 
         val buttonsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -4276,16 +4295,34 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
         }
 
+        val galleryBtn = Button(this).apply {
+            text = "Gallery"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            background = createKeyDrawable(Color.parseColor("#4F8CFF"), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                dpToPx(80),
+                dpToPx(30)
+            ).apply {
+                setMargins(0, 0, dpToPx(8), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                openGalleryForOcr()
+            }
+        }
+        buttonsRow.addView(galleryBtn)
+
         val doneBtn = Button(this).apply {
             text = "Insert & Done"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(120),
+                dpToPx(100),
                 dpToPx(30)
             ).apply {
-                setMargins(0, 0, dpToPx(12), 0)
+                setMargins(0, 0, dpToPx(8), 0)
             }
             setOnClickListener {
                 vibrateClick()
@@ -4303,7 +4340,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             background = createKeyDrawable(Color.parseColor("#33FFFFFF"), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(80),
+                dpToPx(70),
                 dpToPx(30)
             )
             setOnClickListener {
@@ -4347,12 +4384,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         closeBtn.addView(closeIcon)
         container.addView(closeBtn)
 
-        startOcrCamera(previewView, scanTextLabel)
+        startOcrCamera(previewView, scanTextLabel, qrResultLabel)
 
         return container
     }
 
-    private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView) {
+    private var qrDetectedText = ""
+    private var ocrStatusLabel: TextView? = null
+
+    private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView, qrLabel: TextView) {
+        ocrStatusLabel = statusLabel
         if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             statusLabel.text = "Camera permission not granted"
             return
@@ -4373,13 +4414,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 
-                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                val barcodeScanner = BarcodeScanning.getClient()
 
                 imageAnalysis.setAnalyzer(cameraExecutor!!, ImageAnalysis.Analyzer { imageProxy ->
                     val mediaImage = imageProxy.image
                     if (mediaImage != null) {
                         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                        recognizer.process(image)
+                        textRecognizer.process(image)
                             .addOnSuccessListener { visionText ->
                                 val text = visionText.text.trim()
                                 if (text.isNotEmpty() && text != lastScannedText) {
@@ -4392,6 +4434,33 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             }
                             .addOnCompleteListener {
                                 imageProxy.close()
+                            }
+                        barcodeScanner.process(image)
+                            .addOnSuccessListener { barcodes ->
+                                for (barcode in barcodes) {
+                                    val rawValue = barcode.rawValue ?: continue
+                                    if (rawValue != qrDetectedText) {
+                                        qrDetectedText = rawValue
+                                        val typeName = when (barcode.valueType) {
+                                            Barcode.TYPE_URL -> "URL"
+                                            Barcode.TYPE_TEXT -> "Text"
+                                            Barcode.TYPE_CONTACT_INFO -> "Contact"
+                                            Barcode.TYPE_EMAIL -> "Email"
+                                            Barcode.TYPE_PHONE -> "Phone"
+                                            Barcode.TYPE_SMS -> "SMS"
+                                            Barcode.TYPE_WIFI -> "WiFi"
+                                            Barcode.TYPE_GEO -> "Geo"
+                                            Barcode.TYPE_CALENDAR_EVENT -> "Event"
+                                            Barcode.TYPE_DRIVERS_LICENSE -> "License"
+                                            else -> "QR"
+                                        }
+                                        handler.post {
+                                            qrLabel.text = "QR: $typeName - $rawValue"
+                                            lastScannedText = rawValue
+                                            currentInputConnection?.setComposingText(rawValue, 1)
+                                        }
+                                    }
+                                }
                             }
                     } else {
                         imageProxy.close()
@@ -4414,6 +4483,83 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 }
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun openGalleryForOcr() {
+        try {
+            val intent = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
+                type = "image/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            handler.postDelayed({
+                checkAndProcessGalleryImage()
+            }, 500)
+            Toast.makeText(this, "Select an image from your gallery", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            ocrStatusLabel?.text = "Gallery: ${e.message}"
+        }
+    }
+
+    private fun checkAndProcessGalleryImage() {
+        try {
+            val cursor = contentResolver.query(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                null, null, null,
+                android.provider.MediaStore.Images.Media.DATE_ADDED + " DESC LIMIT 1"
+            )
+            cursor?.use { c ->
+                if (c.moveToFirst()) {
+                    val idx = c.getColumnIndex(android.provider.MediaStore.Images.Media.DATA)
+                    if (idx >= 0) {
+                        val path = c.getString(idx)
+                        if (path != null) {
+                            val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+                            if (bitmap != null) {
+                                processImageForOcr(bitmap)
+                                ocrStatusLabel?.text = "Image processed for OCR"
+                                return
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            ocrStatusLabel?.text = "Gallery read error"
+        }
+    }
+
+    private fun processImageForOcr(bitmap: android.graphics.Bitmap) {
+        val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val barcodeScanner = BarcodeScanning.getClient()
+        val image = InputImage.fromBitmap(bitmap, 0)
+
+        textRecognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val text = visionText.text.trim()
+                if (text.isNotEmpty()) {
+                    lastScannedText = text
+                    currentInputConnection?.setComposingText(text, 1)
+                    Toast.makeText(this, "Text extracted from image", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "No text found in image", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "OCR failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+
+        barcodeScanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                for (barcode in barcodes) {
+                    val rawValue = barcode.rawValue ?: continue
+                    if (rawValue.isNotEmpty()) {
+                        lastScannedText = rawValue
+                        currentInputConnection?.setComposingText(rawValue, 1)
+                        Toast.makeText(this, "QR code detected: $rawValue", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
     }
 
     private fun stopOcrCamera() {
