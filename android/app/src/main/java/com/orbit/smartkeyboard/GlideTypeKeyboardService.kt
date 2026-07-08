@@ -64,6 +64,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var isCapsLock = false
     private var lastShiftPressTime: Long = 0
     private var translationInputField: EditText? = null
+    private var grammarInputField: EditText? = null
     private var longPressDelayMs = 500
     private var keyboardHeightDp = 270 // Default keyboard height
     private var isSizeAdjustActive = false
@@ -99,6 +100,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var themeName = "purple"
     private var translationFeatureEnabled = true
     private var voiceDictationEnabled = true
+    private var grammarFeatureEnabled = true
 
     // Theme Colors
     private var themeBgColor = "#121212"
@@ -141,6 +143,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // Translation fields
     private var isTranslationActive = false
+    private var isGrammarActive = false
     private var translationSourceLang = "en"
     private var translationTargetLang = "hi"
     private val translationDebounceHandler = Handler(Looper.getMainLooper())
@@ -356,6 +359,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         themeName = prefs.getString("theme", "red") ?: "red"
         translationFeatureEnabled = prefs.getBoolean("addon_translate", true)
         voiceDictationEnabled = prefs.getBoolean("addon_voice_text", true)
+        grammarFeatureEnabled = prefs.getBoolean("addon_grammar", true)
         longPressDelayMs = prefs.getInt("long_press_delay_ms", 500)
 
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
@@ -796,7 +800,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
         }
 
-        if (isTranslationActive) {
+        if (isGrammarActive) {
+            mainLayout.addView(createGrammarToolbar())
+        } else if (isTranslationActive) {
             mainLayout.addView(createTranslationToolbar())
         } else if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
@@ -1404,6 +1410,34 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     buttonsContainer.addView(transBtn)
                 }
 
+                if (grammarFeatureEnabled) {
+                    val grammarActive = isGrammarActive
+                    val grammarBgColor = if (grammarActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
+                    val grammarBtn = FrameLayout(this).apply {
+                        background = createKeyDrawable(grammarBgColor, dpToPx(6))
+                        isClickable = true
+                        isFocusable = true
+                        layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(30)).apply {
+                            setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                        }
+                        setOnClickListener {
+                            vibrateClick()
+                            isGrammarActive = !isGrammarActive
+                            if (isGrammarActive) isTranslationActive = false
+                            updateKeyboardLayout()
+                        }
+                    }
+                    val grammarIcon = ImageView(this).apply {
+                        setImageResource(R.drawable.ic_grammar)
+                        setColorFilter(Color.WHITE)
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply {
+                            gravity = Gravity.CENTER
+                        }
+                    }
+                    grammarBtn.addView(grammarIcon)
+                    buttonsContainer.addView(grammarBtn)
+                }
+
                 val clipActive = currentViewMode == ViewMode.CLIPBOARD
                 val clipBgColor = if (clipActive) Color.parseColor(themeAccentColor) else Color.TRANSPARENT
                 val clipBtn = FrameLayout(this).apply {
@@ -1884,8 +1918,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                 vibrateClick()
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
                                 startPressEffect(v, event)
-                                if (isTranslationActive && translationInputField != null) {
-                                    val et = translationInputField!!
+                                val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                                    else if (isTranslationActive && translationInputField != null) translationInputField
+                                    else null
+                                if (targetField != null) {
+                                    val et = targetField!!
                                     val start = et.selectionStart
                                     val end = et.selectionEnd
                                     if (start != end) {
@@ -1909,8 +1946,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                                     override fun run() {
                                         vibrateClick()
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                        if (isTranslationActive && translationInputField != null) {
-                                            val et = translationInputField!!
+                                        val repTargetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                                            else if (isTranslationActive && translationInputField != null) translationInputField
+                                            else null
+                                        if (repTargetField != null) {
+                                            val et = repTargetField!!
                                             val start = et.selectionStart
                                             val end = et.selectionEnd
                                             if (start != end) {
@@ -2134,6 +2174,54 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             isCtrlActive = false
             isAltActive = false
             updateKeyboardLayout()
+            return
+        }
+
+        if (isGrammarActive && grammarInputField != null) {
+            val et = grammarInputField!!
+            val start = et.selectionStart
+            val end = et.selectionEnd
+            when (key.lowercase()) {
+                "back", "⌫" -> {
+                    if (start > 0 || end > 0) {
+                        if (start != end) {
+                            et.text.delete(Math.min(start, end), Math.max(start, end))
+                        } else {
+                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                        }
+                    }
+                }
+                "enter", "↵" -> {
+                    val text = et.text.toString()
+                    if (text.isNotEmpty()) {
+                        checkGrammar(text) { result ->
+                            if (result != null) {
+                                currentInputConnection?.commitText(result, 1)
+                                et.text.clear()
+                            }
+                        }
+                    }
+                    wasLastKeySpace = true
+                }
+                "spacebar", " ", "␣" -> {
+                    et.text.replace(Math.min(start, end), Math.max(start, end), " ")
+                    wasLastKeySpace = true
+                }
+                "shift", "⇧", "⇪" -> {}
+                "?123" -> { currentViewMode = ViewMode.SYMBOLS; isSymbolsPage2 = false; updateKeyboardLayout() }
+                "1/2", "2/2" -> { isSymbolsPage2 = !isSymbolsPage2; updateKeyboardLayout() }
+                "abc" -> { currentViewMode = ViewMode.QWERTY; updateKeyboardLayout() }
+                "emoji" -> { currentViewMode = ViewMode.EMOJIS; updateKeyboardLayout() }
+                else -> {
+                    val transformed = if (key.length == 1) applyFontTransformation(key) else key
+                    et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
+                    if (isShifted && !isCapsLock) { isShifted = false }
+                    wasLastKeySpace = false
+                    updateShiftStateBasedOnContext()
+                    updateKeyboardLayout()
+                }
+            }
             return
         }
 
@@ -2867,8 +2955,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     MotionEvent.ACTION_DOWN -> {
                         vibrateClick()
                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                        if (isTranslationActive && translationInputField != null) {
-                            val et = translationInputField!!
+                        val targetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                            else if (isTranslationActive && translationInputField != null) translationInputField
+                            else null
+                        if (targetField != null) {
+                            val et = targetField!!
                             val start = et.selectionStart
                             val end = et.selectionEnd
                             if (start > 0 || end > 0) {
@@ -2890,8 +2981,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                             override fun run() {
                                 vibrateClick()
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                if (isTranslationActive && translationInputField != null) {
-                                    val et = translationInputField!!
+                                val repTargetField = if (isGrammarActive && grammarInputField != null) grammarInputField
+                                    else if (isTranslationActive && translationInputField != null) translationInputField
+                                    else null
+                                if (repTargetField != null) {
+                                    val et = repTargetField!!
                                     val start = et.selectionStart
                                     val end = et.selectionEnd
                                     if (start > 0 || end > 0) {
@@ -3638,6 +3732,182 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         toolbar.addView(sendBtn)
 
         return toolbar
+    }
+
+    private fun createGrammarToolbar(): View {
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(40)
+            )
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpToPx(6), 0, dpToPx(6), 0)
+        }
+
+        val closeBtn = FrameLayout(this).apply {
+            background = createKeyDrawable(Color.TRANSPARENT, dpToPx(4))
+            isClickable = true
+            isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30))
+            setOnClickListener {
+                vibrateClick()
+                grammarInputField = null
+                isGrammarActive = false
+                currentInputConnection?.finishComposingText()
+                updateKeyboardLayout()
+            }
+        }
+        val closeIcon = ImageView(this).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(Color.WHITE)
+            layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply {
+                gravity = Gravity.CENTER
+            }
+        }
+        closeBtn.addView(closeIcon)
+        toolbar.addView(closeBtn)
+
+        val grammarLabel = TextView(this).apply {
+            text = "GRAMMAR"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            background = createKeyDrawable(Color.parseColor("#252525"), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(55), dpToPx(30)).apply {
+                setMargins(dpToPx(4), 0, 0, 0)
+            }
+        }
+        toolbar.addView(grammarLabel)
+
+        val inputField = EditText(this).apply {
+            grammarInputField = this
+            showSoftInputOnFocus = false
+            hint = "Type or paste text to check..."
+            setHintTextColor(Color.GRAY)
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = null
+            maxLines = 1
+            isSingleLine = true
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1.0f
+            ).apply {
+                setMargins(dpToPx(8), 0, dpToPx(8), 0)
+            }
+            post {
+                requestFocus()
+            }
+            setOnTouchListener { v, event ->
+                v.requestFocus()
+                false
+            }
+
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    grammarRunnable?.let { grammarDebounceHandler.removeCallbacks(it) }
+                    val query = s?.toString() ?: ""
+                    if (query.isEmpty()) {
+                        currentInputConnection?.setComposingText("", 1)
+                        return
+                    }
+                    grammarRunnable = Runnable {
+                        checkGrammar(query) { result ->
+                            if (result != null) {
+                                currentInputConnection?.setComposingText(result, 1)
+                            }
+                        }
+                    }
+                    grammarDebounceHandler.postDelayed(grammarRunnable!!, 600)
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        toolbar.addView(inputField)
+
+        val checkBtn = TextView(this).apply {
+            text = "✓"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            gravity = Gravity.CENTER
+            background = createKeyDrawable(Color.parseColor(themeAccentColor), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply {
+                setMargins(0, 0, dpToPx(4), 0)
+            }
+            setOnClickListener {
+                vibrateClick()
+                currentInputConnection?.finishComposingText()
+                grammarInputField = null
+                isGrammarActive = false
+                updateKeyboardLayout()
+            }
+        }
+        toolbar.addView(checkBtn)
+
+        return toolbar
+    }
+
+    private var grammarRunnable: Runnable? = null
+    private val grammarDebounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun checkGrammar(text: String, callback: (String?) -> Unit) {
+        Thread {
+            var conn: HttpURLConnection? = null
+            try {
+                val url = URL("https://api.languagetool.org/v2/check")
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                conn.doOutput = true
+                conn.doInput = true
+
+                val params = "text=${java.net.URLEncoder.encode(text, "UTF-8")}&language=en-US&enabledOnly=false"
+                conn.outputStream.use { os ->
+                    os.write(params.toByteArray())
+                    os.flush()
+                }
+
+                if (conn.responseCode == 200) {
+                    val response = conn.inputStream.use { inputStream ->
+                        BufferedReader(InputStreamReader(inputStream, "UTF-8")).use { reader ->
+                            reader.readText()
+                        }
+                    }
+                    val json = org.json.JSONObject(response)
+                    val matches = json.getJSONArray("matches")
+                    val sb = StringBuilder(text)
+                    // Apply corrections from end to start to preserve offsets
+                    val corrections = mutableListOf<Triple<Int, Int, String>>()
+                    for (i in 0 until matches.length()) {
+                        val match = matches.getJSONObject(i)
+                        val offset = match.getInt("offset")
+                        val length = match.getInt("length")
+                        val replacements = match.getJSONArray("replacements")
+                        if (replacements.length() > 0) {
+                            val suggestion = replacements.getJSONObject(0).getString("value")
+                            corrections.add(Triple(offset, length, suggestion))
+                        }
+                    }
+                    corrections.sortByDescending { it.first }
+                    for ((off, len, replacement) in corrections) {
+                        sb.replace(off, off + len, replacement)
+                    }
+                    val corrected = sb.toString()
+                    handler.post { callback(corrected) }
+                } else {
+                    handler.post { callback(null) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                handler.post { callback(null) }
+            } finally {
+                conn?.disconnect()
+            }
+        }.start()
     }
 
     private fun showLanguageMenu(anchorView: View, isSource: Boolean) {

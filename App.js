@@ -227,6 +227,7 @@ export default function App() {
   const [emojiScale, setEmojiScale] = useState('medium');
   const [addonVoiceText, setAddonVoiceText] = useState(true);
   const [addonTranslate, setAddonTranslate] = useState(true);
+  const [addonGrammar, setAddonGrammar] = useState(true);
   const [appTheme, setAppTheme] = useState('dark');
 
   useEffect(() => {
@@ -318,6 +319,8 @@ export default function App() {
           setAddonVoiceText(avt);
           const atr = await FloatingBubble.getBooleanSetting('addon_translate', true);
           setAddonTranslate(atr);
+          const agr = await FloatingBubble.getBooleanSetting('addon_grammar', true);
+          setAddonGrammar(agr);
 
           const timeline = await FloatingBubble.getBooleanSetting('clipboard_timeline', false);
           setClipboardTimelineEnabled(timeline);
@@ -872,6 +875,22 @@ export default function App() {
                   saveBooleanPref('addon_translate', val);
                 }}
                 thumbColor={addonTranslate ? palette.emerald : '#555'}
+                trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
+              />
+            </View>
+
+            <View style={appStyles.settingSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={appTextStyles.settingItemTitle}>Grammar Checker</Text>
+                <Text style={appTextStyles.settingItemSubtitle}>Check text for grammar errors using LanguageTool</Text>
+              </View>
+              <Switch
+                value={addonGrammar}
+                onValueChange={(val) => {
+                  setAddonGrammar(val);
+                  saveBooleanPref('addon_grammar', val);
+                }}
+                thumbColor={addonGrammar ? palette.emerald : '#555'}
                 trackColor={{ true: 'rgba(0, 214, 143, 0.3)', false: '#2C2C2C' }}
               />
             </View>
