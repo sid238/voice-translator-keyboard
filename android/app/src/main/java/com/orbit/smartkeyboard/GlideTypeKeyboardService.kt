@@ -4344,7 +4344,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         })
         container.addView(bottomBar)
 
-        startOcrCamera(previewView, statusLabel, null)
+        startOcrCamera(previewView, statusLabel, statusLabel)
         return container
     }
     private fun createOcrTopButton(iconRes: Int, onClick: () -> Unit): View {
