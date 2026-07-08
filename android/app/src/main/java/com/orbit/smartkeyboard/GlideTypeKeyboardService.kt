@@ -22,6 +22,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.os.Vibrator
 import android.os.VibrationEffect
@@ -158,6 +159,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // AI Chat fields
     private var isAiChatActive = false
+    private var currentAiResponse: String? = null
+    private var isAiLoading = false
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
     // Voice Dictation
@@ -892,12 +895,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         if (isTranslationActive) {
             mainLayout.addView(createTranslationBar())
+        } else if (isAiChatActive) {
+            mainLayout.addView(createAiChatPanel())
         }
         if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
         } else if (currentViewMode == ViewMode.PC_SHORTCUTS) {
             mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
-        } else if (suggestionsEnabled || isTranslationActive || isListening) {
+        } else if (suggestionsEnabled || isListening) {
             mainLayout.addView(createToolbar())
         }
 
@@ -939,9 +944,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         mainLayout.addView(keyboardArea)
         keyboardContainer.addView(mainLayout)
-        if (isAiChatActive) {
-            keyboardContainer.addView(createAiChatOverlay())
-        }
         } catch (e: Exception) {
             android.util.Log.e("Keyboard", "Layout error", e)
         }
@@ -2910,48 +2912,32 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#000000"))
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
 
-        val actionBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
+        // Compact chip row (Clear All, Clear Unpinned) — no back button, no title (navigation toolbar handles that)
+        val chipRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END
+            setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        actionBar.addView(TextView(this).apply {
-            text = "← Back"; setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); gravity = Gravity.CENTER
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(60), dpToPx(28)).apply { setMargins(0, 0, dpToPx(4), 0) }
-            setOnClickListener { vibrateClick(); currentViewMode = ViewMode.QWERTY; updateKeyboardLayout() }
-        })
-        actionBar.addView(TextView(this).apply {
-            text = "Clipboard (${clipboardHistory.size})"
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        for ((name, col) in listOf("Clear All" to "#FF4444", "Unpin" to "#FF8F00")) {
-            actionBar.addView(TextView(this).apply {
+        for ((name, col) in listOf("Clear All" to "#FF4444", "Clear Unpinned" to "#FF8F00")) {
+            chipRow.addView(TextView(this).apply {
                 text = name; setTextColor(Color.parseColor(col))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f); gravity = Gravity.CENTER
                 setTypeface(null, android.graphics.Typeface.BOLD)
-                setPadding(dpToPx(6), dpToPx(3), dpToPx(6), dpToPx(3))
+                setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(2))
                 background = createKeyDrawableWithRadius(Color.parseColor(col + "22"), 4)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(24)).apply { setMargins(dpToPx(2), 0, dpToPx(2), 0) }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(20)).apply { setMargins(dpToPx(2), 0, dpToPx(2), 0) }
                 setOnClickListener { vibrateClick()
                     when (name) {
                         "Clear All" -> clearClipboard(false)
-                        "Unpin" -> clearClipboard(true)
+                        "Clear Unpinned" -> clearClipboard(true)
                     }
                 }
             })
         }
-        rootLayout.addView(actionBar)
+        rootLayout.addView(chipRow)
 
         val scrollView = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -2968,71 +2954,111 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(100))
             })
         } else {
-            for (item in clipboardHistory.reversed()) {
-                val txt = item.text ?: continue
-                val isPinned = item.isPinned
-                val isImage = item.imageUri != null
-                val isUrl = !isImage && android.util.Patterns.WEB_URL.matcher(txt).matches()
-                val ts = android.text.format.DateUtils.getRelativeTimeSpanString(
-                    item.timestamp, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS
-                ).toString()
+            val now = System.currentTimeMillis()
+            val pinnedItems = clipboardHistory.filter { it.isPinned }
+            val recentItems = clipboardHistory.filter { !it.isPinned && now - it.timestamp < 86400000L }
+            val yesterdayItems = clipboardHistory.filter { !it.isPinned && now - it.timestamp in 86400000L..172800000L }
 
-                val card = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dpToPx(8), dpToPx(6), dpToPx(4), dpToPx(6))
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
-                    background = GradientDrawable().apply {
-                        cornerRadius = dpToPx(keyRadiusDp).toFloat()
-                        setColor(Color.parseColor(if (isPinned) "#1A1A3E" else "#111122"))
-                        if (isPinned) setStroke(dpToPx(1), Color.parseColor(themeAccentColor + "88"))
-                    }
-                }
+            data class Section(val title: String, val items: List<ClipboardItem>)
+            val sections = listOfNotNull(
+                Section("Pinned", pinnedItems).takeIf { pinnedItems.isNotEmpty() },
+                Section("Recent", recentItems).takeIf { recentItems.isNotEmpty() },
+                Section("Yesterday", yesterdayItems).takeIf { yesterdayItems.isNotEmpty() }
+            )
 
-                if (isImage) {
-                    card.addView(ImageView(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply { setMargins(0, 0, dpToPx(6), 0) }
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        try { setImageURI(android.net.Uri.parse(item.imageUri)) } catch (_: Exception) { setImageResource(R.drawable.ic_clipboard) }
-                        setOnClickListener { vibrateClick(); pasteClipboardImage(item) }
-                    })
-                }
-
-                val textCol = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
-                }
-                textCol.addView(TextView(this).apply {
-                    text = txt; setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-                    setOnClickListener {
-                        vibrateClick()
-                        if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(txt, 1)
-                    }
+            for ((secIdx, section) in sections.withIndex()) {
+                // Section header
+                listLayout.addView(TextView(this).apply {
+                    text = section.title; setTextColor(Color.parseColor(themeAccentColor))
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); setTypeface(null, android.graphics.Typeface.BOLD)
+                    setPadding(dpToPx(6), dpToPx(if (secIdx == 0) 2 else 6), dpToPx(6), dpToPx(2))
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 })
-                textCol.addView(TextView(this).apply {
-                    text = if (isPinned) "📌 $ts" else ts
-                    setTextColor(Color.parseColor("#66FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
-                })
-                card.addView(textCol)
 
-                // Action icons
-                if (isUrl) {
-                    card.addView(createClipActionIcon(R.drawable.ic_browser, "#4F8CFF") {
-                        try {
-                            val url = if (!txt.startsWith("http")) "https://$txt" else txt
-                            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                        } catch (e: Exception) {
-                            Toast.makeText(this@GlideTypeKeyboardService, "Can't open", Toast.LENGTH_SHORT).show()
+                for (item in section.items) {
+                    val txt = item.text ?: continue
+                    val isImage = item.imageUri != null
+                    val isPinned = item.isPinned
+                    val ts = android.text.format.DateUtils.getRelativeTimeSpanString(
+                        item.timestamp, now, android.text.format.DateUtils.MINUTE_IN_MILLIS
+                    ).toString()
+
+                    val card = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dpToPx(8), dpToPx(5), dpToPx(4), dpToPx(5))
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
+                        background = GradientDrawable().apply {
+                            cornerRadius = dpToPx(24).toFloat()
+                            setColor(Color.parseColor(if (isPinned) "#1A1A3E" else "#111122"))
+                            if (isPinned) setStroke(dpToPx(1), Color.parseColor(themeAccentColor + "88"))
                         }
+                        elevation = dpToPx(1).toFloat()
+                        // Tap to insert
+                        setOnClickListener { vibrateClick()
+                            if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(txt, 1)
+                        }
+                        // Swipe right → Pin, Swipe left → Delete
+                        val gestureDetector = GestureDetector(this@GlideTypeKeyboardService, object : GestureDetector.SimpleOnGestureListener() {
+                            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                                val dx = (e2.x - (e1?.x ?: e2.x))
+                                if (Math.abs(dx) > dpToPx(30) && Math.abs(velocityX) > 200f) {
+                                    if (dx > 0) { vibrateClick(); togglePinItem(item) }
+                                    else { vibrateClick(); deleteClipboardItem(item) }
+                                    return true
+                                }
+                                return false
+                            }
+                        })
+                        setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
+                        setOnLongClickListener {
+                            vibrateClick()
+                            Toast.makeText(this@GlideTypeKeyboardService, "Select items", Toast.LENGTH_SHORT).show()
+                            true
+                        }
+                    }
+
+                    // Image preview
+                    if (isImage) {
+                        card.addView(ImageView(this).apply {
+                            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply { setMargins(0, 0, dpToPx(6), 0) }
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            try { setImageURI(android.net.Uri.parse(item.imageUri)) } catch (_: Exception) { setImageResource(R.drawable.ic_clipboard) }
+                        })
+                    }
+
+                    // Text column
+                    val textCol = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
+                    }
+                    textCol.addView(TextView(this).apply {
+                        text = txt; setTextColor(Color.WHITE)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
                     })
+                    textCol.addView(TextView(this).apply {
+                        text = if (isPinned) "• $ts" else ts
+                        setTextColor(Color.parseColor("#66FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+                    })
+                    card.addView(textCol)
+
+                    // URL browse icon
+                    val isUrl = !isImage && android.util.Patterns.WEB_URL.matcher(txt).matches()
+                    if (isUrl) {
+                        card.addView(createClipActionIcon(R.drawable.ic_browser, "#4F8CFF") {
+                            try {
+                                val url = if (!txt.startsWith("http")) "https://$txt" else txt
+                                startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                            } catch (e: Exception) {
+                                Toast.makeText(this@GlideTypeKeyboardService, "Can't open", Toast.LENGTH_SHORT).show()
+                            }
+                        })
+                    }
+                    // Pin/Unpin button
+                    card.addView(createClipActionIcon(if (isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (isPinned) themeAccentColor else "#FFFFFF") { togglePinItem(item) })
+                    // Delete button
+                    card.addView(createClipActionIcon(R.drawable.ic_delete, "#FF4444") { deleteClipboardItem(item) })
+                    listLayout.addView(card)
                 }
-                card.addView(createClipActionIcon(R.drawable.ic_copy, "#FFFFFF") {
-                    currentInputConnection?.commitText(txt, 1)
-                    Toast.makeText(this@GlideTypeKeyboardService, "Pasted", Toast.LENGTH_SHORT).show()
-                })
-                card.addView(createClipActionIcon(if (isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (isPinned) themeAccentColor else "#FFFFFF") { togglePinItem(item) })
-                card.addView(createClipActionIcon(R.drawable.ic_delete, "#FF4444") { deleteClipboardItem(item) })
-                listLayout.addView(card)
             }
         }
 
@@ -3264,47 +3290,41 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
 
 
-    private fun createAiChatOverlay(): View {
-        val overlay = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
+    private fun createAiChatPanel(): View {
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
+            layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.TOP }
-            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
-            isClickable = true
-            isFocusable = true
+            )
         }
 
-        val inner = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
+        // Header
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(4))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(32))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(34))
         }
         header.addView(TextView(this).apply {
             text = "Orbit AI"; setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        val insertBtn = TextView(this).apply {
-            text = "Insert"; setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2))
-            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor + "33"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(22)).apply { setMargins(0, 0, dpToPx(4), 0) }
-            setOnClickListener {
-                val last = aiChatMessages.lastOrNull { !it.first }?.second
-                if (last != null) { currentInputConnection?.commitText(last, 1); Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show() }
-                else Toast.makeText(this@GlideTypeKeyboardService, "No AI response yet", Toast.LENGTH_SHORT).show()
-            }
+        for ((icon, label) in listOf(R.drawable.ic_undo to "History", R.drawable.ic_settings to "Settings")) {
+            header.addView(FrameLayout(this).apply {
+                background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+                isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(4), 0) }
+                setOnClickListener { vibrateClick(); Toast.makeText(this@GlideTypeKeyboardService, label, Toast.LENGTH_SHORT).show() }
+                addView(ImageView(this@GlideTypeKeyboardService).apply {
+                    setImageResource(icon); setColorFilter(Color.WHITE)
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply { gravity = Gravity.CENTER }
+                })
+            })
         }
-        header.addView(insertBtn)
         val closeBtn = FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22))
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
             setOnClickListener { vibrateClick(); isAiChatActive = false; updateKeyboardLayout() }
             addView(ImageView(this@GlideTypeKeyboardService).apply {
                 setImageResource(R.drawable.ic_close); setColorFilter(Color.WHITE)
@@ -3312,57 +3332,58 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             })
         }
         header.addView(closeBtn)
-        inner.addView(header)
+        panel.addView(header)
 
+        // Quick actions
+        val chipScroll = HorizontalScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            isHorizontalScrollBarEnabled = false
+        }
         val chipRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.START
-            setPadding(dpToPx(8), 0, dpToPx(8), dpToPx(4))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(4))
         }
-        for (action in listOf("Rewrite", "Summarize", "Fix Grammar", "Translate")) {
+        for (action in listOf("Rewrite", "Fix Grammar", "Translate", "Summarize", "Explain", "Continue", "Shorten", "Professional")) {
             chipRow.addView(TextView(this).apply {
                 text = action; setTextColor(Color.parseColor(themeAccentColor))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f); gravity = Gravity.CENTER
-                setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2))
+                setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3))
                 background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor + "22"), 4)
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22)).apply { setMargins(0, 0, dpToPx(4), 0) }
                 setOnClickListener {
-                    val input = overlay.findViewWithTag<EditText>("aiInput")
+                    val input = panel.findViewWithTag<EditText>("aiInput")
                     if (input != null) {
                         val ctx = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: ""
                         input.setText(when (action) {
                             "Rewrite" -> "Rewrite this: $ctx"
-                            "Summarize" -> "Summarize this: $ctx"
                             "Fix Grammar" -> "Fix grammar: $ctx"
-                            else -> "Translate to English: $ctx"
+                            "Translate" -> "Translate to English: $ctx"
+                            "Summarize" -> "Summarize this: $ctx"
+                            "Explain" -> "Explain this: $ctx"
+                            "Continue" -> "Continue writing: $ctx"
+                            "Shorten" -> "Shorten this: $ctx"
+                            else -> "Make this professional: $ctx"
                         })
                     }
                 }
             })
         }
-        inner.addView(chipRow)
+        chipScroll.addView(chipRow)
+        panel.addView(chipScroll)
 
-        val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(140))
-            isFillViewport = true
+        // Response card (if available)
+        if (currentAiResponse != null) {
+            panel.addView(createAiResponseCard(currentAiResponse!!))
         }
-        val msgContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-        }
-        for ((isUser, msg) in aiChatMessages) {
-            msgContainer.addView(createAiMessageView(isUser, msg))
-        }
-        scrollView.addView(msgContainer)
-        inner.addView(scrollView)
 
+        // Prompt box
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(6))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(42))
         }
         val inputEdit = EditText(this).apply {
-            hint = "Ask AI..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
+            hint = "Ask anything..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
             setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             background = createKeyDrawableWithRadius(Color.parseColor("#333355"), 4)
             maxLines = 2; tag = "aiInput"
@@ -3372,28 +3393,49 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         inputRow.addView(inputEdit)
 
+        // Voice button
+        if (voiceDictationEnabled) {
+            inputRow.addView(FrameLayout(this).apply {
+                background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+                isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
+                setOnClickListener { vibrateClick(); if (isListening) stopVoiceInput() else startVoiceInput() }
+                addView(ImageView(this@GlideTypeKeyboardService).apply {
+                    setImageResource(R.drawable.ic_mic); setColorFilter(Color.parseColor("#AAFFFFFF"))
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+                })
+            })
+        }
+
+        // Paste button
+        inputRow.addView(FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
+            setOnClickListener { vibrateClick()
+                val clip = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                val txt = clip?.primaryClip?.getItemAt(0)?.text?.toString() ?: return@setOnClickListener
+                inputEdit.setText(txt); inputEdit.setSelection(txt.length)
+            }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(R.drawable.ic_paste); setColorFilter(Color.parseColor("#AAFFFFFF"))
+                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+            })
+        })
+
+        // Send button
         val sendBtn = FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), keyRadiusDp)
             isClickable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply { setMargins(dpToPx(6), 0, 0, 0) }
+            layoutParams = LinearLayout.LayoutParams(dpToPx(34), dpToPx(34)).apply { setMargins(dpToPx(6), 0, 0, 0) }
             setOnClickListener {
                 val msg = inputEdit.text.toString().trim()
                 if (msg.isEmpty()) return@setOnClickListener
                 inputEdit.setText("")
                 aiChatMessages.add(true to msg)
-                msgContainer.addView(createAiMessageView(true, msg))
-                scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
-
-                val loadingView = createAiMessageView(false, "Thinking...")
-                msgContainer.addView(loadingView)
-                scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
-
+                currentAiResponse = null; isAiLoading = true; updateKeyboardLayout()
                 aiAssist("Chat", msg) { result ->
                     val response = result ?: "Sorry, I couldn't process that."
-                    msgContainer.removeView(loadingView)
                     aiChatMessages.add(false to response)
-                    msgContainer.addView(createAiMessageView(false, response))
-                    scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+                    currentAiResponse = response; isAiLoading = false; updateKeyboardLayout()
                 }
             }
             addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -3403,10 +3445,83 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             })
         }
         inputRow.addView(sendBtn)
-        inner.addView(inputRow)
+        panel.addView(inputRow)
 
-        overlay.addView(inner)
-        return overlay
+        return panel
+    }
+
+    private fun createAiResponseCard(response: String): View {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            background = createKeyDrawableWithRadius(Color.parseColor("#1E1E3A"), 4)
+            setOnLongClickListener {
+                currentInputConnection?.commitText(response, 1)
+                Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+        card.addView(TextView(this).apply {
+            text = response; setTextColor(Color.parseColor("#CCCCFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 6; ellipsize = android.text.TextUtils.TruncateAt.END
+            setLineSpacing(2f, 1f)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        val actionRowScroll = HorizontalScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            isHorizontalScrollBarEnabled = false
+            clipChildren = false
+        }
+        val actionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START
+            setPadding(0, dpToPx(4), 0, 0)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        data class ActionChip(val label: String, val color: String, val onClick: () -> Unit)
+        val actions = listOf(
+            ActionChip("Copy", themeAccentColor) { currentInputConnection?.commitText(response, 1); Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show() },
+            ActionChip("Replace", "#4FC3F7") {
+                currentInputConnection?.deleteSurroundingText(2000, 0)
+                currentInputConnection?.commitText(response, 1)
+            },
+            ActionChip("Insert Below", "#81C784") { currentInputConnection?.commitText("\n$response", 1) },
+            ActionChip("Regenerate", "#FFB74D") {
+                val lastUserMsg = aiChatMessages.lastOrNull { it.first }?.second
+                if (lastUserMsg != null) {
+                    isAiLoading = true; currentAiResponse = null; updateKeyboardLayout()
+                    aiAssist("Chat", lastUserMsg) { result ->
+                        val r = result ?: "Sorry, I couldn't process that."
+                        aiChatMessages.add(false to r); currentAiResponse = r; isAiLoading = false; updateKeyboardLayout()
+                    }
+                }
+            },
+            ActionChip("Continue", "#CE93D8") {
+                isAiLoading = true; updateKeyboardLayout()
+                aiAssist("Continue", response) { result ->
+                    val r = result ?: "Sorry, I couldn't process that."
+                    val combined = "$response\n$r"
+                    aiChatMessages.add(false to r); currentAiResponse = combined; isAiLoading = false; updateKeyboardLayout()
+                }
+            },
+            ActionChip("✕", "#FF4444") { currentAiResponse = null; updateKeyboardLayout() }
+        )
+        for ((label, col, action) in actions) {
+            val chip = TextView(this).apply {
+                text = label; setTextColor(Color.parseColor(col))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f); gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(2))
+                background = createKeyDrawableWithRadius(Color.parseColor(col + "33"), 4)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22)).apply { setMargins(0, 0, dpToPx(4), 0) }
+                setOnClickListener { vibrateClick(); action() }
+            }
+            actionRow.addView(chip)
+        }
+        actionRowScroll.addView(actionRow)
+        card.addView(actionRowScroll)
+        return card
     }
 
     private fun createAiMessageView(isUser: Boolean, text: String): TextView {
