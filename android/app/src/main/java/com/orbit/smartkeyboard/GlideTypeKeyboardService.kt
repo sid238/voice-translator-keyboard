@@ -366,6 +366,22 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
 
+        val ocrImagePath = prefs.getString("ocr_image_path", null)
+        if (ocrImagePath != null) {
+            prefs.edit().remove("ocr_image_path").apply()
+            try {
+                val file = java.io.File(ocrImagePath)
+                if (file.exists()) {
+                    val bitmap = android.graphics.BitmapFactory.decodeFile(ocrImagePath)
+                    if (bitmap != null) {
+                        processImageForOcr(bitmap)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("OCR", "Failed to process gallery image", e)
+            }
+        }
+
         val langsStr = prefs.getString("selected_languages", "en") ?: "en"
         selectedLanguages.clear()
         selectedLanguages.addAll(langsStr.split(",").filter { it.isNotEmpty() })
@@ -4390,21 +4406,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private var qrDetectedText = ""
     private var ocrStatusLabel: TextView? = null
-    private val GALLERY_REQUEST_CODE = 9001
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == GALLERY_REQUEST_CODE && data?.data != null) {
-            try {
-                val uri = data.data!!
-                val bitmap = android.provider.MediaStore.Images.Media.getBitmap(contentResolver, uri)
-                processImageForOcr(bitmap)
-                ocrStatusLabel?.text = "Gallery image processed"
-            } catch (e: Exception) {
-                ocrStatusLabel?.text = "Gallery error: ${e.message}"
-            }
-        }
-    }
 
     private fun startOcrCamera(previewView: androidx.camera.view.PreviewView, statusLabel: TextView, qrLabel: TextView) {
         ocrStatusLabel = statusLabel
@@ -4499,12 +4500,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun openGalleryForOcr() {
         try {
-            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            val intent = Intent(Intent.ACTION_PICK).apply {
                 type = "image/*"
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            startActivityForResult(intent, GALLERY_REQUEST_CODE)
-            Toast.makeText(this, "Select an image for OCR", Toast.LENGTH_SHORT).show()
+            startActivity(intent)
+            Toast.makeText(this, "Open the app to process gallery images for OCR", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             ocrStatusLabel?.text = "Gallery: ${e.message}"
         }

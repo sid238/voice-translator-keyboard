@@ -17,44 +17,58 @@ import java.io.FileOutputStream
 
 class FloatingBubbleModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
-    private val PICK_IMAGE_REQUEST = 9081
+    private val PICK_THEME_REQUEST = 9081
+    private val PICK_OCR_REQUEST = 9082
     private var mPickPromise: Promise? = null
+    private var mOcrPickPromise: Promise? = null
 
     private val mActivityEventListener = object : BaseActivityEventListener() {
         override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-            if (requestCode == PICK_IMAGE_REQUEST) {
-                if (resultCode == Activity.RESULT_OK && data != null) {
-                    val imageUri = data.data
-                    if (imageUri != null) {
-                        try {
-                            val contentResolver = reactApplicationContext.contentResolver
-                            val inputStream = contentResolver.openInputStream(imageUri)
-                            if (inputStream != null) {
-                                val destFolder = File(reactApplicationContext.cacheDir, "theme_images").apply { mkdirs() }
-                                val destFile = File(destFolder, "custom_bg.jpg")
-                                val outputStream = FileOutputStream(destFile)
-                                
-                                inputStream.copyTo(outputStream)
-                                inputStream.close()
-                                outputStream.close()
-                                
-                                val prefs = reactApplicationContext.getSharedPreferences("glidetype_keyboard_prefs", Context.MODE_PRIVATE)
-                                prefs.edit().putString("theme_image_path", destFile.absolutePath).apply()
-                                
-                                mPickPromise?.resolve(destFile.absolutePath)
-                            } else {
-                                mPickPromise?.reject("STREAM_ERROR", "Could not open stream for selected image")
-                            }
-                        } catch (e: Exception) {
-                            mPickPromise?.reject("COPY_ERROR", e.message, e)
-                        }
-                    } else {
-                        mPickPromise?.reject("URI_ERROR", "Selected image URI is null")
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                val imageUri = data.data ?: return
+                try {
+                    val contentResolver = reactApplicationContext.contentResolver
+                    val inputStream = contentResolver.openInputStream(imageUri) ?: return
+                    val prefs = reactApplicationContext.getSharedPreferences("glidetype_keyboard_prefs", Context.MODE_PRIVATE)
+                    
+                    if (requestCode == PICK_THEME_REQUEST) {
+                        val destFolder = File(reactApplicationContext.cacheDir, "theme_images").apply { mkdirs() }
+                        val destFile = File(destFolder, "custom_bg.jpg")
+                        val outputStream = FileOutputStream(destFile)
+                        inputStream.copyTo(outputStream)
+                        inputStream.close()
+                        outputStream.close()
+                        prefs.edit().putString("theme_image_path", destFile.absolutePath).apply()
+                        mPickPromise?.resolve(destFile.absolutePath)
+                        mPickPromise = null
+                    } else if (requestCode == PICK_OCR_REQUEST) {
+                        val destFolder = File(reactApplicationContext.cacheDir, "ocr_images").apply { mkdirs() }
+                        val destFile = File(destFolder, "ocr_${System.currentTimeMillis()}.jpg")
+                        val outputStream = FileOutputStream(destFile)
+                        inputStream.copyTo(outputStream)
+                        inputStream.close()
+                        outputStream.close()
+                        prefs.edit().putString("ocr_image_path", destFile.absolutePath).apply()
+                        mOcrPickPromise?.resolve(destFile.absolutePath)
+                        mOcrPickPromise = null
                     }
-                } else {
-                    mPickPromise?.reject("CANCELLED", "Image picking was cancelled")
+                } catch (e: Exception) {
+                    if (requestCode == PICK_THEME_REQUEST) {
+                        mPickPromise?.reject("ERROR", e.message, e)
+                        mPickPromise = null
+                    } else {
+                        mOcrPickPromise?.reject("ERROR", e.message, e)
+                        mOcrPickPromise = null
+                    }
                 }
-                mPickPromise = null
+            } else {
+                if (requestCode == PICK_THEME_REQUEST) {
+                    mPickPromise?.reject("CANCELLED", "Image picking was cancelled")
+                    mPickPromise = null
+                } else {
+                    mOcrPickPromise?.reject("CANCELLED", "Image picking was cancelled")
+                    mOcrPickPromise = null
+                }
             }
         }
     }
@@ -79,6 +93,20 @@ class FloatingBubbleModule(reactContext: ReactApplicationContext) : ReactContext
             type = "image/*"
         }
         activity.startActivityForResult(Intent.createChooser(intent, "Select Background Image"), PICK_IMAGE_REQUEST)
+    }
+
+    @ReactMethod
+    fun pickOcrImage(promise: Promise) {
+        val activity = reactApplicationContext.currentActivity
+        if (activity == null) {
+            promise.reject("Activity not available")
+            return
+        }
+        mOcrPickPromise = promise
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+        }
+        activity.startActivityForResult(Intent.createChooser(intent, "Select Image for OCR"), PICK_OCR_REQUEST)
     }
 
     @ReactMethod
