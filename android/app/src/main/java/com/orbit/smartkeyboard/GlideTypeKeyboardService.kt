@@ -1,5 +1,6 @@
 package com.orbit.smartkeyboard
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -3535,7 +3536,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         AlertDialog.Builder(this)
             .setTitle("Custom AI Prompt")
             .setView(inputEditText)
-            .setPositiveButton("Send") { _, _ ->
+            .setPositiveButton("Send") { _: android.content.DialogInterface, _: Int ->
                 val prompt = inputEditText.text.toString()
                 if (prompt.isNotEmpty()) {
                     Toast.makeText(this, "AI processing...", Toast.LENGTH_SHORT).show()

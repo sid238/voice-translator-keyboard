@@ -165,7 +165,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
         var x: Float,
         var y: Float,
         val vx: Float,
-        val vy: Float,
+        var vy: Float,
         val color: Int,
         var size: Float,
         val maxLife: Float,
@@ -381,9 +381,8 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 paint.maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.NORMAL)
                 canvas.drawCircle(p.x, p.y, p.size * ratio.coerceAtLeast(0.3f), paint)
 
-                val glowPaint = Paint(paint).apply {
-                    alpha = (alpha * 0.3f).toInt()
-                }
+                val glowPaint = Paint(paint)
+                glowPaint.alpha = (paint.alpha * 0.3f).toInt()
                 canvas.drawCircle(p.x, p.y, p.size * 2f, glowPaint)
                 paint.maskFilter = null
             }
