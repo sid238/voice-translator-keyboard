@@ -1046,8 +1046,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 isClickable = true
                 layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
                 setOnClickListener {
+                    val inputText = bufferEdit.text.toString()
                     val ic = currentInputConnection
-                    if (text.isNotEmpty() && ic != null) {
+                    if (inputText.isNotEmpty() && ic != null) {
                         val currentText = ic.getTextBeforeCursor(2000, 0)?.toString()
                         var prefixLen = 0
                         if (currentText != null) {
@@ -1056,7 +1057,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         }
                         ic.beginBatchEdit()
                         if (prefixLen > 0) ic.deleteSurroundingText(prefixLen, 0)
-                        ic.commitText(text, 1)
+                        ic.commitText(inputText, 1)
                         ic.endBatchEdit()
                     }
                     landscapeBufferText = null
