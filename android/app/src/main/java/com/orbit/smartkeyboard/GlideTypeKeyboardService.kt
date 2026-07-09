@@ -942,6 +942,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus -> internalEditTextFocused = if (hasFocus) this else null }
                 post { requestFocus() }
                 setOnClickListener { /* keep focus */ }
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    override fun afterTextChanged(s: android.text.Editable?) { landscapeBufferText = s?.toString() }
+                })
             }
             bufferRow.addView(bufferEdit)
             val okBtn = FrameLayout(this).apply {
@@ -952,8 +957,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     val text = bufferEdit.text.toString()
                     if (text.isNotEmpty()) {
                         currentInputConnection?.commitText(text, 1)
-                        landscapeBufferText = text
                     }
+                    landscapeBufferText = null
                     requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -2163,9 +2168,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val end = et.selectionEnd.coerceAtLeast(0)
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    if (start > 0 || end > 0) {
-                        if (start != end) et.text.delete(Math.min(start, end), Math.max(start, end))
-                        else et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                    val selStart = et.selectionStart.coerceAtLeast(0)
+                    val selEnd = et.selectionEnd.coerceAtLeast(0)
+                    if (selEnd > selStart) {
+                        et.text.delete(selStart, selEnd)
+                    } else if (selStart > 0) {
+                        et.text.delete(selStart - 1, selStart)
                     }
                 }
                 "enter", "↵" -> { }
@@ -3418,7 +3426,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         hideAiSystemOverlay()
         val screenWidth = resources.displayMetrics.widthPixels
         val cardHeight = dpToPx(240)
-        val topMargin = dpToPx(8)
 
         val card = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cardHeight)
@@ -3536,22 +3543,28 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         val root = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(screenWidth - dpToPx(16), ViewGroup.LayoutParams.WRAP_CONTENT)
-            setPadding(dpToPx(8), topMargin, dpToPx(8), 0)
+            setPadding(0, 0, 0, 0)
         }
         root.addView(card)
 
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val loc = IntArray(2)
+        keyboardContainer.getLocationOnScreen(loc)
+        val keyboardY = loc[1]
+        val screenHeight = resources.displayMetrics.heightPixels
+        val keyboardHeightOnScreen = screenHeight - keyboardY + dpToPx(4)
+        val overlayWidth = keyboardContainer.width.coerceAtLeast(screenWidth - dpToPx(16))
         val lp = WindowManager.LayoutParams(
-            screenWidth,
+            overlayWidth,
             ViewGroup.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             android.graphics.PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = keyboardHeightOnScreen
             token = keyboardContainer.windowToken
         }
         wm.addView(root, lp)
