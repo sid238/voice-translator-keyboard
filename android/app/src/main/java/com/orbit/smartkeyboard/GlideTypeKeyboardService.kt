@@ -179,6 +179,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var aiInputField: EditText? = null
     private var landscapeBufferField: EditText? = null
     private var landscapeBufferText: String? = null
+    private var landscapeBufferCommitted = false
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -1021,9 +1022,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val bufferEdit = EditText(this).apply {
                 landscapeBufferField = this
                 showSoftInputOnFocus = false
-                val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
-                if (existingText != null) setText(existingText)
-                setSelection(existingText?.length ?: 0)
+                if (!landscapeBufferCommitted) {
+                    val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
+                    if (existingText != null) setText(existingText)
+                    setSelection(existingText?.length ?: 0)
+                }
+                landscapeBufferCommitted = false
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -1051,6 +1055,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         currentInputConnection?.commitText(text, 1)
                     }
                     landscapeBufferText = null
+                    landscapeBufferCommitted = true
                     requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -1488,6 +1493,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     if (!online) transBtn.alpha = 0.4f
                     buttonsContainer.addView(transBtn)
                 }
+
+                // Ambient effect toggle
+                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_flash, ambientEffect in listOf("matrix_rain", "rgb_glow")) {
+                    toggleAmbientEffect()
+                })
 
                 // AI button - gradient, centered, Orbit identity
                 buttonsContainer.addView(createAiGradientButton())
@@ -1950,6 +1960,7 @@ hideAiSystemOverlay()
                                     else null
                                 val aiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
                                     else null
+                                val bufField = if (!isTranslationActive && !isAiChatActive) internalEditTextFocused else null
                                 if (targetField != null) {
                                     val et = targetField!!
                                     val start = et.selectionStart
@@ -1962,6 +1973,11 @@ hideAiSystemOverlay()
                                     }
                                 } else if (aiField != null) {
                                     val et = aiField!!
+                                    val s = et.selectionStart.coerceAtLeast(0)
+                                    val e = et.selectionEnd.coerceAtLeast(0)
+                                    if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
+                                } else if (bufField != null) {
+                                    val et = bufField!!
                                     val s = et.selectionStart.coerceAtLeast(0)
                                     val e = et.selectionEnd.coerceAtLeast(0)
                                     if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
@@ -1984,6 +2000,7 @@ hideAiSystemOverlay()
                                             else null
                                         val repAiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
                                             else null
+                                        val repBufField = if (!isTranslationActive && !isAiChatActive) internalEditTextFocused else null
                                         if (repTargetField != null) {
                                             val et = repTargetField!!
                                             val start = et.selectionStart
@@ -1996,6 +2013,11 @@ hideAiSystemOverlay()
                                             }
                                         } else if (repAiField != null) {
                                             val et = repAiField!!
+                                            val s = et.selectionStart.coerceAtLeast(0)
+                                            val e = et.selectionEnd.coerceAtLeast(0)
+                                            if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
+                                        } else if (repBufField != null) {
+                                            val et = repBufField!!
                                             val s = et.selectionStart.coerceAtLeast(0)
                                             val e = et.selectionEnd.coerceAtLeast(0)
                                             if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
@@ -3851,6 +3873,19 @@ hideAiSystemOverlay()
 
     private var translationOverlayView: View? = null
 
+    private fun toggleAmbientEffect() {
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
+        val current = prefs.getString("ambient_effect", "none") ?: "none"
+        val next = when (current) {
+            "none" -> "matrix_rain"
+            "matrix_rain" -> "rgb_glow"
+            else -> "none"
+        }
+        prefs.edit().putString("ambient_effect", next).apply()
+        ambientEffect = next
+        updateKeyboardLayout()
+    }
+
     private fun showTranslationOverlay() {
         hideTranslationOverlay()
         val screenWidth = resources.displayMetrics.widthPixels
@@ -3865,9 +3900,19 @@ hideAiSystemOverlay()
         }
         val inner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
+            setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(6))
         }
         lateinit var inputEdit: EditText
+        lateinit var previewView: TextView
+        lateinit var copyBtn: FrameLayout
+        lateinit var insertBtn: FrameLayout
+        var activeTone = "default"
+        // Header: hold & move
+        inner.addView(TextView(this).apply {
+            text = "⠿ hold & move"; setTextColor(Color.parseColor("#66FFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f); gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(16))
+        })
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -3876,48 +3921,34 @@ hideAiSystemOverlay()
         val sourceLangBtn = TextView(this).apply {
             text = translationSourceLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
-            setOnClickListener {
-                vibrateClick()
-                showLanguageMenu(this, true)
-            }
+            setOnClickListener { vibrateClick(); showLanguageMenu(this, true) }
         }
         navRow.addView(sourceLangBtn)
         val targetLangBtn = TextView(this).apply {
             text = translationTargetLang.uppercase()
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
             layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
-            setOnClickListener {
-                vibrateClick()
-                showLanguageMenu(this, false)
-            }
+            setOnClickListener { vibrateClick(); showLanguageMenu(this, false) }
         }
         navRow.addView(targetLangBtn)
-        val switchLangBtn = TextView(this).apply {
-            text = "⇄"
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            gravity = Gravity.CENTER
+        navRow.addView(TextView(this).apply {
+            text = "⇄"; setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER
             setPadding(dpToPx(4), 0, dpToPx(4), 0)
             layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(24))
             setOnClickListener {
-                vibrateClick()
-                val temp = translationSourceLang
-                translationSourceLang = translationTargetLang
-                translationTargetLang = temp
-                sourceLangBtn.text = translationSourceLang.uppercase()
-                targetLangBtn.text = translationTargetLang.uppercase()
+                vibrateClick(); val temp = translationSourceLang
+                translationSourceLang = translationTargetLang; translationTargetLang = temp
+                sourceLangBtn.text = translationSourceLang.uppercase(); targetLangBtn.text = translationTargetLang.uppercase()
             }
-        }
-        navRow.addView(switchLangBtn)
+        })
         navRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         navRow.addView(FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
@@ -3942,49 +3973,130 @@ hideAiSystemOverlay()
             maxLines = 1; isSingleLine = true
             setPadding(dpToPx(10), 0, dpToPx(10), 0)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
-                    val query = s?.toString() ?: ""
-                    if (query.isEmpty()) return
-                    translationRunnable = Runnable {
-                        translateText(query, translationSourceLang, translationTargetLang) { result ->
-                            if (result != null) currentInputConnection?.commitText(result, 1)
-                        }
-                    }
-                    translationDebounceHandler.postDelayed(translationRunnable!!, 300)
-                }
-                override fun afterTextChanged(s: android.text.Editable?) {}
-            })
         }
         inputRow.addView(inputEdit)
-        for ((icon, col) in listOf(R.drawable.ic_mic to "#AAAAAA", 0 to "#7C4DFF")) {
-            inputRow.addView(FrameLayout(this).apply {
+        inputRow.addView(FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
+            setOnClickListener { vibrateClick(); if (isListening) stopVoiceInput() else startVoiceInput() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(R.drawable.ic_mic); setColorFilter(Color.parseColor("#AAAAAA"))
+                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+            })
+        })
+        inner.addView(inputRow)
+        // Preview area
+        previewView = TextView(this).apply {
+            visibility = View.GONE
+            setTextColor(Color.parseColor("#DDFFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#221A1A3E"), 8)
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, dpToPx(4), 0, dpToPx(4))
+            }
+        }
+        inner.addView(previewView)
+        // Tone buttons row
+        val toneRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(26)).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
+        }
+        val tones = listOf("Zen", "Casual", "Formal", "Poetic", "Witty")
+        val toneViews = mutableListOf<TextView>()
+        for (tone in tones) {
+            val tv = TextView(this).apply {
+                text = tone; gravity = Gravity.CENTER
+                setTextColor(Color.parseColor("#88FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTypeface(null, android.graphics.Typeface.BOLD)
                 background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
-                isClickable = true
-                layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
-                setOnClickListener { vibrateClick()
-                    if (icon == R.drawable.ic_mic) { if (isListening) stopVoiceInput() else startVoiceInput() }
-                    else {
-                        val t = inputEdit.text.toString().trim()
-                        if (t.isNotEmpty()) currentInputConnection?.commitText(t, 1)
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(22), 1f).apply { setMargins(dpToPx(2), 0, dpToPx(2), 0) }
+                setOnClickListener {
+                    vibrateClick()
+                    activeTone = if (activeTone == tone.lowercase()) "default" else tone.lowercase()
+                    for (v in toneViews) {
+                        val isActive = v.text.lowercase() == activeTone
+                        v.setTextColor(Color.parseColor(if (isActive) themeAccentColor else "#88FFFFFF"))
+                        v.background = createKeyDrawableWithRadius(
+                            Color.parseColor(if (isActive) "#334D1CFF" else "#222244"), 6)
                     }
                 }
-                if (icon != 0) {
-                    addView(ImageView(this@GlideTypeKeyboardService).apply {
-                        setImageResource(icon); setColorFilter(Color.parseColor(col))
-                        layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
-                    })
-                } else {
-                    addView(TextView(this@GlideTypeKeyboardService).apply {
-                        this.text = "➤"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER
-                        layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-                    })
+            }
+            toneViews.add(tv)
+            toneRow.addView(tv)
+        }
+        inner.addView(toneRow)
+        // Bottom row: translate button, copy, insert
+        val bottomRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(32))
+        }
+        bottomRow.addView(FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF"), 8)
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(70), dpToPx(26)).apply { setMargins(0, 0, dpToPx(4), 0) }
+            setOnClickListener {
+                vibrateClick()
+                val t = inputEdit.text.toString().trim()
+                if (t.isEmpty()) return@setOnClickListener
+                previewView.text = "Translating..."; previewView.visibility = View.VISIBLE
+                val query = if (activeTone != "default") "($activeTone tone) $t" else t
+                translateText(query, translationSourceLang, translationTargetLang) { result ->
+                    previewView.text = result ?: "Translation failed"
+                    previewView.visibility = View.VISIBLE
                 }
+            }
+            addView(TextView(this@GlideTypeKeyboardService).apply {
+                text = "Translate"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+            })
+        })
+        bottomRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+        // Copy button
+        copyBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(26)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
+            setOnClickListener {
+                vibrateClick()
+                val txt = previewView.text.toString()
+                if (txt.isNotEmpty() && txt != "Translating..." && txt != "Translation failed") {
+                    (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("translation", txt))
+                    Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show()
+                }
+            }
+            addView(TextView(this@GlideTypeKeyboardService).apply {
+                text = "Copy"; setTextColor(Color.parseColor("#88FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
             })
         }
-        inner.addView(inputRow)
+        bottomRow.addView(copyBtn)
+        // Insert button
+        insertBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 8)
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(26)).apply { setMargins(dpToPx(4), 0, 0, 0) }
+            setOnClickListener {
+                vibrateClick()
+                val txt = previewView.text.toString()
+                if (txt.isNotEmpty() && txt != "Translating..." && txt != "Translation failed") {
+                    currentInputConnection?.commitText(txt, 1)
+                    previewView.text = ""; previewView.visibility = View.GONE
+                    inputEdit.text.clear()
+                }
+            }
+            addView(TextView(this@GlideTypeKeyboardService).apply {
+                text = "Insert"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+            })
+        }
+        bottomRow.addView(insertBtn)
+        inner.addView(bottomRow)
         card.addView(inner)
 
         val root = FrameLayout(this).apply {
