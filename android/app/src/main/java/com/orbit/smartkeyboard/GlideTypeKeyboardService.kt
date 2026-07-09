@@ -86,8 +86,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = true
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 3
-    private var keyRadiusDp = 16
+    private var keySpacingDp = 5
+    private var keyRadiusDp = 14
     private var keyFontSizeSp = 0 // 0 = follow system default
     private var lastSpacePressTime: Long = 0
     private var adaptiveThemeEnabled = false
@@ -110,6 +110,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     // gesture/glide typing removed
     private var themeName = "purple"
     private var translationFeatureEnabled = true
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return true
+        val net = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(net) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
     private var voiceDictationEnabled = true
     // Theme Colors
     private var themeBgColor = "#121212"
@@ -164,6 +171,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var currentAiResponse: String? = null
     private var isAiLoading = false
     private var aiInputField: EditText? = null
+    private var landscapeBufferField: EditText? = null
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -870,7 +878,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
             val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             val calculatedHeight = if (isLandscape) {
-                (keyboardHeightDp * 0.75f).toInt().coerceIn(160, 240)
+                (keyboardHeightDp * 1.2f).toInt().coerceIn(200, 320)
             } else {
                 keyboardHeightDp
             }
@@ -906,6 +914,49 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             mainLayout.addView(createNavigationToolbar("PC Shortcuts"))
         } else if (suggestionsEnabled || isListening) {
             mainLayout.addView(createToolbar())
+        }
+
+        // Landscape text buffer (type in keyboard, confirm with OK)
+        if (isLandscape && currentViewMode == ViewMode.QWERTY && !isTranslationActive && !isAiChatActive) {
+            val bufferRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(34))
+            }
+            val bufferEdit = EditText(this).apply {
+                landscapeBufferField = this
+                showSoftInputOnFocus = false
+                hint = "Type here, press OK to send"
+                setHintTextColor(Color.parseColor("#66FFFFFF"))
+                setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                background = createKeyDrawableWithRadius(Color.parseColor("#333355"), 4)
+                maxLines = 1; isSingleLine = true
+                setPadding(dpToPx(8), 0, dpToPx(8), 0)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
+                onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus -> internalEditTextFocused = if (hasFocus) this else null }
+                post { requestFocus() }
+                setOnClickListener { /* keep focus */ }
+            }
+            bufferRow.addView(bufferEdit)
+            val okBtn = FrameLayout(this).apply {
+                background = createKeyDrawable(Color.parseColor(themeAccentColor))
+                isClickable = true
+                layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
+                setOnClickListener {
+                    val text = bufferEdit.text.toString()
+                    if (text.isNotEmpty()) { currentInputConnection?.commitText(text, 1); bufferEdit.setText("") }
+                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                }
+                addView(TextView(this@GlideTypeKeyboardService).apply {
+                    text = "OK"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                    setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+                })
+            }
+            bufferRow.addView(okBtn)
+            mainLayout.addView(bufferRow)
         }
 
         val keyboardArea = FrameLayout(this).apply {
@@ -1307,10 +1358,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 buttonsContainer.addView(stopBtn)
             } else {
                 if (translationFeatureEnabled) {
-                    val transBtn = createToolbarPillButton(R.drawable.ic_translate, isTranslationActive) {
+                    val online = isNetworkAvailable()
+                    val transBtn = createToolbarPillButton(R.drawable.ic_translate, isTranslationActive && online) {
+                        if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "Translation requires internet", Toast.LENGTH_SHORT).show(); return@createToolbarPillButton }
                         isTranslationActive = !isTranslationActive
                         updateKeyboardLayout()
                     }
+                    if (!online) transBtn.alpha = 0.4f
                     buttonsContainer.addView(transBtn)
                 }
 
@@ -1402,14 +1456,28 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createAiGradientButton(): View {
+        val online = isNetworkAvailable()
+        val canOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) android.provider.Settings.canDrawOverlays(this) else true
         return FrameLayout(this).apply {
-            background = createKeyDrawable(Color.parseColor(if (isAiChatActive) themeAccentColor else "#44222222"))
-            isClickable = true
-            isFocusable = true
+            background = createKeyDrawable(Color.parseColor(
+                if (!online) "#33111111"
+                else if (isAiChatActive) themeAccentColor
+                else "#44222222"
+            ))
+            isClickable = online
+            isFocusable = online
+            alpha = if (online) 1f else 0.4f
             layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
                 setMargins(dpToPx(2), 0, dpToPx(2), 0)
             }
             setOnClickListener {
+                if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !canOverlay) {
+                    Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for popup", Toast.LENGTH_LONG).show()
+                    val intent = android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                    startActivity(Intent(intent).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                    return@setOnClickListener
+                }
                 vibrateClick()
                 isAiChatActive = !isAiChatActive
                 if (isAiChatActive) isTranslationActive = false
@@ -1647,6 +1715,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         Color.parseColor(themeRegularKeyBg)
                     }
                     background = createKeyDrawable(bgColor)
+                    elevation = dpToPx(2).toFloat()
                     isClickable = true
                     isFocusable = true
                     layoutParams = FrameLayout.LayoutParams(
@@ -3334,12 +3403,26 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createAiChatOverlay(): View {
         val overlay = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.TOP }
-            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setBackgroundColor(Color.parseColor("#88000000"))
             isClickable = true
             isFocusable = true
+            setOnClickListener { vibrateClick(); isAiChatActive = false; updateKeyboardLayout() }
         }
-        overlay.addView(createAiChatPanel())
+        val popup = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER
+                setMargins(dpToPx(12), 0, dpToPx(12), 0)
+            }
+            elevation = dpToPx(8).toFloat()
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(keyRadiusDp).toFloat()
+                setColor(Color.parseColor("#E81A1A2E"))
+            }
+            setOnClickListener { /* prevent dismiss when tapping on popup */ }
+        }
+        popup.addView(createAiChatPanel())
+        overlay.addView(popup)
         return overlay
     }
 
@@ -3520,12 +3603,18 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 true
             }
         }
-        card.addView(TextView(this).apply {
+        val respScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(120))
+            isFillViewport = true
+        }
+        respScroll.addView(TextView(this).apply {
             text = response; setTextColor(Color.parseColor("#CCCCFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 6; ellipsize = android.text.TextUtils.TruncateAt.END
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setLineSpacing(2f, 1f)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(0, 0, 0, dpToPx(4))
+            layoutParams = ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         })
+        card.addView(respScroll)
         val actionRowScroll = HorizontalScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             isHorizontalScrollBarEnabled = false
@@ -4284,7 +4373,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        topBar.addView(createOcrTopButton(R.drawable.ic_camera) { vibrateClick(); toggleOcrFlash() })
+        topBar.addView(createOcrTopButton(R.drawable.ic_flash) { vibrateClick(); toggleOcrFlash() })
         topBar.addView(createOcrTopButton(R.drawable.ic_gallery) { vibrateClick(); openGalleryForOcr() })
         container.addView(topBar)
 
@@ -4338,7 +4427,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             isClickable = true
             setOnClickListener { vibrateClick(); toggleOcrFlash() }
             addView(ImageView(this@GlideTypeKeyboardService).apply {
-                setImageResource(R.drawable.ic_camera); setColorFilter(Color.parseColor("#FFD600"))
+                    setImageResource(R.drawable.ic_flash); setColorFilter(Color.parseColor("#FFD600"))
                 layoutParams = FrameLayout.LayoutParams(dpToPx(20), dpToPx(20)).apply { gravity = Gravity.CENTER }
             })
         })
