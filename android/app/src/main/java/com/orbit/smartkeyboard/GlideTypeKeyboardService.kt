@@ -1929,6 +1929,8 @@ hideAiSystemOverlay()
                                 startPressEffect(v, event)
                                 val targetField = if (isTranslationActive && translationInputField != null) translationInputField
                                     else null
+                                val aiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
+                                    else null
                                 if (targetField != null) {
                                     val et = targetField!!
                                     val start = et.selectionStart
@@ -1939,6 +1941,11 @@ hideAiSystemOverlay()
                                         et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
                                         et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                     }
+                                } else if (aiField != null) {
+                                    val et = aiField!!
+                                    val s = et.selectionStart.coerceAtLeast(0)
+                                    val e = et.selectionEnd.coerceAtLeast(0)
+                                    if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
                                 } else {
                                     val ic = currentInputConnection
                                     val selected = ic?.getSelectedText(0)
@@ -1956,6 +1963,8 @@ hideAiSystemOverlay()
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
                                         val repTargetField = if (isTranslationActive && translationInputField != null) translationInputField
                                             else null
+                                        val repAiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
+                                            else null
                                         if (repTargetField != null) {
                                             val et = repTargetField!!
                                             val start = et.selectionStart
@@ -1966,6 +1975,11 @@ hideAiSystemOverlay()
                                                 et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
                                                 et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
                                             }
+                                        } else if (repAiField != null) {
+                                            val et = repAiField!!
+                                            val s = et.selectionStart.coerceAtLeast(0)
+                                            val e = et.selectionEnd.coerceAtLeast(0)
+                                            if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
                                         } else {
                                             val ic = currentInputConnection
                                             val selected = ic?.getSelectedText(0)
@@ -3811,7 +3825,7 @@ hideAiSystemOverlay()
                 cornerRadius = dpToPx(22).toFloat()
                 setColor(Color.parseColor("#F0161820"))
             }
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(100))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             elevation = dpToPx(16).toFloat()
             alpha = 0f; animate().alpha(1f).setDuration(220).start()
             setOnClickListener { }
@@ -3867,6 +3881,13 @@ hideAiSystemOverlay()
                 translationTargetLang = temp
                 sourceLangBtn.text = translationSourceLang.uppercase()
                 targetLangBtn.text = translationTargetLang.uppercase()
+                val q = inputEdit.text.toString().trim()
+                if (q.isNotEmpty()) {
+                    translateText(q, translationSourceLang, translationTargetLang) { result ->
+                        translateResultView.text = result ?: ""
+                        translationResult = result
+                    }
+                }
             }
         }
         navRow.addView(switchLangBtn)
@@ -3899,10 +3920,11 @@ hideAiSystemOverlay()
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
                     val query = s?.toString() ?: ""
-                    if (query.isEmpty()) return
+                    if (query.isEmpty()) { translateResultView.text = ""; translationResult = null; return }
                     translationRunnable = Runnable {
                         translateText(query, translationSourceLang, translationTargetLang) { result ->
-                            if (result != null) currentInputConnection?.setComposingText(result, 1)
+                            translateResultView.text = result ?: ""
+                            translationResult = result
                         }
                     }
                     translationDebounceHandler.postDelayed(translationRunnable!!, 300)
@@ -3918,7 +3940,13 @@ hideAiSystemOverlay()
                 layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
                 setOnClickListener { vibrateClick()
                     if (icon == R.drawable.ic_mic) { if (isListening) stopVoiceInput() else startVoiceInput() }
-                    else { val t = inputEdit.text.toString().trim(); if (t.isNotEmpty()) { translateText(t, translationSourceLang, translationTargetLang) { r -> if (r != null) currentInputConnection?.commitText(r, 1) } } }
+                    else {
+                        val t = inputEdit.text.toString().trim()
+                        if (t.isNotEmpty()) {
+                            if (translationResult != null) { currentInputConnection?.commitText(translationResult, 1); translationResult = null }
+                            else { translateText(t, translationSourceLang, translationTargetLang) { r -> if (r != null) currentInputConnection?.commitText(r, 1) } }
+                        }
+                    }
                 }
                 if (icon != 0) {
                     addView(ImageView(this@GlideTypeKeyboardService).apply {
@@ -3934,6 +3962,14 @@ hideAiSystemOverlay()
             })
         }
         inner.addView(inputRow)
+        val translateResultView = TextView(this).apply {
+            text = ""; setTextColor(Color.parseColor("#BBFFFFFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dpToPx(4), dpToPx(4), dpToPx(4), 0)
+            maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        inner.addView(translateResultView)
         card.addView(inner)
 
         val root = FrameLayout(this).apply {
@@ -3959,6 +3995,7 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
+        var translationResult: String? = null
     }
 
     private fun hideTranslationOverlay() {
@@ -4518,17 +4555,18 @@ RULES:
                         updateKeyboardLayout()
                     }
                     override fun onResults(results: android.os.Bundle?) {
+                        if (!isListening) return
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
 if (isTranslationActive && translationInputField != null) {
                     val et = translationInputField!!
-                    val start = et.selectionStart
-                    val end = et.selectionEnd
+                    val start = et.selectionStart.coerceAtLeast(0)
+                    val end = et.selectionEnd.coerceAtLeast(0)
                     et.text.replace(Math.min(start, end), Math.max(start, end), text)
                 } else if (isAiChatActive && aiInputField != null) {
                     val et = aiInputField!!
-                    et.text.append(text + " ")
+                    et.text.replace(et.selectionStart.coerceAtLeast(0), et.length(), text + " ")
                 } else {
                     currentInputConnection?.commitText(text + " ", 1)
                 }
@@ -4543,12 +4581,12 @@ if (isTranslationActive && translationInputField != null) {
                             val text = matches[0]
 if (isTranslationActive && translationInputField != null) {
                     val et = translationInputField!!
-                    val start = et.selectionStart
-                    val end = et.selectionEnd
+                    val start = et.selectionStart.coerceAtLeast(0)
+                    val end = et.selectionEnd.coerceAtLeast(0)
                     et.text.replace(Math.min(start, end), Math.max(start, end), text)
                 } else if (isAiChatActive && aiInputField != null) {
                     val et = aiInputField!!
-                    et.text.append(text)
+                    et.text.replace(et.selectionStart.coerceAtLeast(0), et.length(), text)
                 } else {
                     currentInputConnection?.setComposingText(text, 1)
                 }
