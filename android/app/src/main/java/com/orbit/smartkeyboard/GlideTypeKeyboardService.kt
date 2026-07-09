@@ -172,6 +172,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var isAiLoading = false
     private var aiInputField: EditText? = null
     private var landscapeBufferField: EditText? = null
+    private var landscapeBufferText: String? = null
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -927,6 +928,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val bufferEdit = EditText(this).apply {
                 landscapeBufferField = this
                 showSoftInputOnFocus = false
+                if (landscapeBufferText != null) setText(landscapeBufferText)
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -945,9 +947,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
                 setOnClickListener {
                     val text = bufferEdit.text.toString()
-                    if (text.isNotEmpty()) { currentInputConnection?.commitText(text, 1); bufferEdit.setText("") }
-                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
-                    currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                    if (text.isNotEmpty()) {
+                        currentInputConnection?.commitText(text, 1)
+                        landscapeBufferText = text
+                    }
+                    requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
                     text = "OK"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
@@ -3404,26 +3408,170 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private fun createAiChatOverlay(): View {
         val overlay = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setBackgroundColor(Color.parseColor("#88000000"))
+            setBackgroundColor(Color.parseColor("#66000000"))
             isClickable = true
             isFocusable = true
+            alpha = 0f
             setOnClickListener { vibrateClick(); isAiChatActive = false; updateKeyboardLayout() }
+            animate().alpha(1f).setDuration(200).start()
         }
-        val popup = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
-                setMargins(dpToPx(12), 0, dpToPx(12), 0)
+        val card = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(200)).apply {
+                gravity = Gravity.TOP
+                setMargins(dpToPx(8), dpToPx(4), dpToPx(8), 0)
             }
-            elevation = dpToPx(8).toFloat()
+            elevation = dpToPx(12).toFloat()
+            translationY = -dpToPx(220).toFloat()
             background = GradientDrawable().apply {
-                cornerRadius = dpToPx(keyRadiusDp).toFloat()
-                setColor(Color.parseColor("#E81A1A2E"))
+                cornerRadius = dpToPx(22).toFloat()
+                setColor(Color.parseColor("#E8161820"))
             }
-            setOnClickListener { /* prevent dismiss when tapping on popup */ }
+            setOnClickListener { }
+            animate().translationY(0f).setDuration(250).start()
         }
-        popup.addView(createAiChatPanel())
-        overlay.addView(popup)
+        val inner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(8))
+        }
+
+        // Header: Orbit AI + pin/expand/close
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(30))
+        }
+        header.addView(TextView(this).apply {
+            text = "✦ Orbit AI"; setTextColor(Color.parseColor("#7C4DFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        header.addView(TextView(this).apply {
+            text = "Overlay"; setTextColor(Color.parseColor("#7C4DFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f); gravity = Gravity.CENTER
+            setPadding(dpToPx(5), dpToPx(2), dpToPx(5), dpToPx(2))
+            background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF33"), 4)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(18)).apply { setMargins(0, 0, dpToPx(4), 0) }
+        })
+        for ((icon, col, lbl) in listOf(
+            Triple(R.drawable.ic_pin, "#FFFFFF", "Pin"),
+            Triple(R.drawable.ic_expand, "#FFFFFF", "Expand"),
+            Triple(R.drawable.ic_close, "#FFFFFF", "Close")
+        )) {
+            header.addView(FrameLayout(this).apply {
+                background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+                isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(3), 0) }
+                setOnClickListener { vibrateClick()
+                    if (lbl == "Close") { isAiChatActive = false; updateKeyboardLayout() }
+                    else Toast.makeText(this@GlideTypeKeyboardService, lbl, Toast.LENGTH_SHORT).show()
+                }
+                addView(ImageView(this@GlideTypeKeyboardService).apply {
+                    setImageResource(icon); setColorFilter(Color.parseColor(col))
+                    layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply { gravity = Gravity.CENTER }
+                })
+            })
+        }
+        inner.addView(header)
+
+        // Response area (scrollable, 0 height = fill remaining space)
+        val respScroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            isFillViewport = false
+        }
+        respScroll.addView(TextView(this).apply {
+            val resp = currentAiResponse ?: "Ask anything..."
+            text = if (currentAiResponse != null) formatMarkdown(resp) else resp
+            setTextColor(Color.parseColor("#E0E0E0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setLineSpacing(3f, 1f)
+            setPadding(0, dpToPx(4), 0, dpToPx(4))
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        inner.addView(respScroll)
+
+        // Input row
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(4), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(36))
+        }
+        val inputEdit = EditText(this).apply {
+            hint = "Ask anything..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 8)
+            maxLines = 2; tag = "aiInput"; showSoftInputOnFocus = false
+            setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            aiInputField = this
+            onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus -> internalEditTextFocused = if (hasFocus) this else null }
+            post { requestFocus() }
+        }
+        inputRow.addView(inputEdit)
+
+        for ((icon, col, act) in listOf(
+            Triple(R.drawable.ic_gallery, "#AAAAAA") { Toast.makeText(this@GlideTypeKeyboardService, "Attach", Toast.LENGTH_SHORT).show() },
+            Triple(R.drawable.ic_mic, "#AAAAAA") { if (isListening) stopVoiceInput() else startVoiceInput() },
+            Triple(0, "#7C4DFF") {
+                val msg = inputEdit.text.toString().trim()
+                if (msg.isEmpty()) return@setOnClickListener
+                inputEdit.setText("")
+                aiChatMessages.add(true to msg)
+                currentAiResponse = null; isAiLoading = true; updateKeyboardLayout()
+                aiAssist("Chat", msg) { result ->
+                    val response = result ?: "Sorry, I couldn't process that."
+                    aiChatMessages.add(false to response)
+                    currentAiResponse = response; isAiLoading = false; updateKeyboardLayout()
+                }
+            }
+        )) {
+            inputRow.addView(FrameLayout(this).apply {
+                background = createKeyDrawableWithRadius(if (icon == 0) Color.parseColor("#7C4DFF") else Color.parseColor("#222244"), 6)
+                isClickable = true; layoutParams = LinearLayout.LayoutParams(if (icon == 0) dpToPx(34) else dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
+                setOnClickListener { vibrateClick(); act() }
+                if (icon != 0) {
+                    addView(ImageView(this@GlideTypeKeyboardService).apply {
+                        setImageResource(icon); setColorFilter(Color.parseColor(col))
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+                    })
+                } else {
+                    addView(TextView(this@GlideTypeKeyboardService).apply {
+                        text = "➤"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+                        gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+                    })
+                }
+            })
+        }
+        inner.addView(inputRow)
+        card.addView(inner)
+        overlay.addView(card)
         return overlay
+    }
+
+    private fun formatMarkdown(text: String): android.text.SpannableStringBuilder {
+        val sb = android.text.SpannableStringBuilder(text)
+        // Bold: **text**
+        val boldRegex = Regex("\\*\\*(.+?)\\*\\*")
+        for (m in boldRegex.findAll(text)) {
+            val start = text.indexOf(m.value)
+            val end = start + m.value.length
+            if (start >= 0) sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.replace(start, end, m.groupValues[1])
+        }
+        // Italic: *text*
+        val italicRegex = Regex("(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)")
+        for (m in italicRegex.findAll(text)) {
+            val start = text.indexOf(m.value)
+            val end = start + m.value.length
+            if (start >= 0) sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.ITALIC), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sb.replace(start, end, m.groupValues[1])
+        }
+        // Code blocks: ```text```
+        val codeRegex = Regex("```(.+?)```", RegexOption.DOT_MATCHES_ALL)
+        for (m in codeRegex.findAll(text)) {
+            val start = text.indexOf(m.value)
+            val end = start + m.value.length
+            if (start >= 0) sb.setSpan(android.text.style.BackgroundColorSpan(Color.parseColor("#333355")), start, end, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return sb
     }
 
     private fun createAiChatPanel(): View {
