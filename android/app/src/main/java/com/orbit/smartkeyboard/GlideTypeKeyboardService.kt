@@ -422,20 +422,20 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         showAiSystemOverlay()
                         updateKeyboardLayout()
                     }
-                    val text = selectedAppText ?: return@setOnClickListener
+                    val selText = selectedAppText ?: return@setOnClickListener
                     selectedAppText = null
-                    aiChatMessages.add(true to "Fix grammar: $text")
-                    aiOverlayChatContainer?.addView(createChatBubble(true, "Fix grammar: $text"))
+                    aiChatMessages.add(true to "Fix grammar: $selText")
+                    aiOverlayChatContainer?.addView(createChatBubble(true, "Fix grammar: $selText"))
                     aiOverlayChatContainer?.let { c ->
                         val placeholder = TextView(this@GlideTypeKeyboardService).apply {
-                            text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
+                            this.text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); tag = "aiTyping"
                             setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
                         }
                         c.addView(placeholder)
                         c.post { (c.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
                     }
-                    aiAssist("Fix Grammar", text) { result ->
+                    aiAssist("Fix Grammar", selText) { result ->
                         val response = result ?: "Sorry, I couldn't process that."
                         aiChatMessages.add(false to response)
                         aiOverlayChatContainer?.findViewWithTag<View>("aiTyping")?.let { aiOverlayChatContainer?.removeView(it) }
