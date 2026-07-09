@@ -5324,12 +5324,9 @@ if (isTranslationActive && translationInputField != null) {
 
     companion object {
         private var pendingGalleryImageHandler: ((Bitmap) -> Unit)? = null
-
+        fun setPendingGalleryImageHandler(handler: (Bitmap) -> Unit) { pendingGalleryImageHandler = handler }
         fun handleGalleryImage(bitmap: Bitmap) {
-            val handler = pendingGalleryImageHandler
-            if (handler != null) {
-                handler(bitmap)
-            }
+            pendingGalleryImageHandler?.invoke(bitmap)
         }
     }
 
@@ -5338,7 +5335,7 @@ if (isTranslationActive && translationInputField != null) {
             cameraProvider?.unbindAll()
             cameraProvider = null
             ocrCamera = null
-            cameraExecutor?.shutdown()
+            try { cameraExecutor?.shutdown() } catch (_: Exception) { }
             cameraExecutor = null
             ocrPreviewView = null
         } catch (e: Exception) {
