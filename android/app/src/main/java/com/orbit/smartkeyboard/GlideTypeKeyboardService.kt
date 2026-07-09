@@ -3834,6 +3834,9 @@ hideAiSystemOverlay()
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
         }
+        lateinit var inputEdit: EditText
+        lateinit var translateResultView: TextView
+        var translationResult: String? = null
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -3907,7 +3910,7 @@ hideAiSystemOverlay()
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(36))
         }
-        val inputEdit = EditText(this).apply {
+        inputEdit = EditText(this).apply {
             translationInputField = this; showSoftInputOnFocus = false
             hint = "Type to translate..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
             setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -3962,7 +3965,7 @@ hideAiSystemOverlay()
             })
         }
         inner.addView(inputRow)
-        val translateResultView = TextView(this).apply {
+        translateResultView = TextView(this).apply {
             text = ""; setTextColor(Color.parseColor("#BBFFFFFF"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             setPadding(dpToPx(4), dpToPx(4), dpToPx(4), 0)
@@ -3995,7 +3998,6 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
-        var translationResult: String? = null
     }
 
     private fun hideTranslationOverlay() {
