@@ -41,6 +41,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private var lastY = 0f
 
     private var rgbHue = 0f
+    private val matrixChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ"
 
     // Press state for continuous effects
     private var pressX = 0f
@@ -228,7 +229,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     )
 
     private fun spawnMatrix(x: Float, y: Float, keyWidth: Int, keyHeight: Int) {
-        val matrixChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿ"
         for (i in 0..2) {
             val streamX = (x - keyWidth / 2) + random.nextFloat() * keyWidth
             val streamY = y - keyHeight / 2
