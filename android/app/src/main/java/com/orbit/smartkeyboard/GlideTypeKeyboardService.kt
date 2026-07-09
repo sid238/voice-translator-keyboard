@@ -3612,7 +3612,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setLineSpacing(2f, 1f)
             setPadding(0, 0, 0, dpToPx(4))
-            layoutParams = ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         })
         card.addView(respScroll)
         val actionRowScroll = HorizontalScrollView(this).apply {
