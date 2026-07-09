@@ -1042,7 +1042,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     if (text.isNotEmpty()) {
                         currentInputConnection?.commitText(text, 1)
                     }
-                    landscapeBufferText = null
+                    // Keep landscapeBufferText so user can edit again when reopening
+                    if (landscapeBufferText == null) landscapeBufferText = text
                     requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -1455,6 +1456,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     val transBtn = createToolbarPillButton(R.drawable.ic_translate, isTranslationActive && online) {
                         if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "Translation requires internet", Toast.LENGTH_SHORT).show(); return@createToolbarPillButton }
                         isTranslationActive = !isTranslationActive
+                        if (isTranslationActive) {
+                            if (isAiChatActive) isAiChatActive = false
+                            showTranslationOverlay()
+                        } else {
+                            hideTranslationOverlay()
+                        }
                         updateKeyboardLayout()
                     }
                     if (!online) transBtn.alpha = 0.4f
@@ -1581,7 +1588,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     }
                     showAiSystemOverlay()
                 } else {
-                    hideAiSystemOverlay()
+hideAiSystemOverlay()
+        hideTranslationOverlay()
                 }
                 updateKeyboardLayout()
             }
@@ -3785,7 +3793,131 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         aiOverlayChatContainer = null
     }
 
-    private fun formatMarkdown(text: String): android.text.SpannableStringBuilder {
+    private var translationOverlayView: View? = null
+
+    private fun showTranslationOverlay() {
+        hideTranslationOverlay()
+        val screenWidth = resources.displayMetrics.widthPixels
+        val card = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(22).toFloat()
+                setColor(Color.parseColor("#F0161820"))
+            }
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(100))
+            elevation = dpToPx(16).toFloat()
+            alpha = 0f; animate().alpha(1f).setDuration(220).start()
+            setOnClickListener { }
+        }
+        val inner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
+        }
+        // Nav row
+        val navRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(28))
+        }
+        navRow.addView(TextView(this).apply {
+            text = "Translate"; setTextColor(Color.parseColor("#7C4DFF"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        navRow.addView(FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22))
+            setOnClickListener { vibrateClick(); isTranslationActive = false; hideTranslationOverlay(); updateKeyboardLayout() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(R.drawable.ic_close); setColorFilter(Color.WHITE)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(12), dpToPx(12)).apply { gravity = Gravity.CENTER }
+            })
+        })
+        inner.addView(navRow)
+        // Input row
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(36))
+        }
+        val inputEdit = EditText(this).apply {
+            translationInputField = this; showSoftInputOnFocus = false
+            hint = "Type to translate..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
+            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 8)
+            maxLines = 1; isSingleLine = true
+            setPadding(dpToPx(10), 0, dpToPx(10), 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
+                    val query = s?.toString() ?: ""
+                    if (query.isEmpty()) return
+                    translationRunnable = Runnable {
+                        translateText(query, translationSourceLang, translationTargetLang) { result ->
+                            if (result != null) currentInputConnection?.setComposingText(result, 1)
+                        }
+                    }
+                    translationDebounceHandler.postDelayed(translationRunnable!!, 300)
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        inputRow.addView(inputEdit)
+        for ((icon, col) in listOf(R.drawable.ic_mic to "#AAAAAA", 0 to "#7C4DFF")) {
+            inputRow.addView(FrameLayout(this).apply {
+                background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
+                isClickable = true
+                layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
+                setOnClickListener { vibrateClick()
+                    if (icon == R.drawable.ic_mic) { if (isListening) stopVoiceInput() else startVoiceInput() }
+                    else { val t = inputEdit.text.toString().trim(); if (t.isNotEmpty()) { translateText(t, translationSourceLang, translationTargetLang) { r -> if (r != null) currentInputConnection?.commitText(r, 1) } } }
+                }
+                if (icon != 0) {
+                    addView(ImageView(this@GlideTypeKeyboardService).apply {
+                        setImageResource(icon); setColorFilter(Color.parseColor(col))
+                        layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+                    })
+                } else {
+                    addView(TextView(this@GlideTypeKeyboardService).apply {
+                        this.text = "➤"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+                    })
+                }
+            })
+        }
+        inner.addView(inputRow)
+        card.addView(inner)
+
+        val root = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(screenWidth - dpToPx(16), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(card)
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val loc = IntArray(2)
+        keyboardContainer.getLocationOnScreen(loc)
+        val keyboardY = loc[1]
+        val screenHeight = resources.displayMetrics.heightPixels
+        val lp = WindowManager.LayoutParams(
+            screenWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = screenHeight - keyboardY + dpToPx(4)
+            token = keyboardContainer.windowToken
+        }
+        wm.addView(root, lp)
+        translationOverlayView = root
+    }
+
+    private fun hideTranslationOverlay() {
+        translationOverlayView?.let {
+            try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it) } catch (_: Exception) { }
+        }
+        translationOverlayView = null
+    }
         val sb = android.text.SpannableStringBuilder(text)
         // Bold: **text**
         val boldRegex = Regex("\\*\\*(.+?)\\*\\*")
@@ -4339,14 +4471,17 @@ RULES:
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
-                            if (isTranslationActive && translationInputField != null) {
-                                val et = translationInputField!!
-                                val start = et.selectionStart
-                                val end = et.selectionEnd
-                                et.text.replace(Math.min(start, end), Math.max(start, end), text)
-                            } else {
-                                currentInputConnection?.commitText(text + " ", 1)
-                            }
+if (isTranslationActive && translationInputField != null) {
+                    val et = translationInputField!!
+                    val start = et.selectionStart
+                    val end = et.selectionEnd
+                    et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                } else if (isAiChatActive && aiInputField != null) {
+                    val et = aiInputField!!
+                    et.text.append(text + " ")
+                } else {
+                    currentInputConnection?.commitText(text + " ", 1)
+                }
                         }
                         isListening = false
                         playVoiceBeep(false)
@@ -4356,14 +4491,17 @@ RULES:
                         val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
-                            if (isTranslationActive && translationInputField != null) {
-                                val et = translationInputField!!
-                                val start = et.selectionStart
-                                val end = et.selectionEnd
-                                et.text.replace(Math.min(start, end), Math.max(start, end), text)
-                            } else {
-                                currentInputConnection?.setComposingText(text, 1)
-                            }
+if (isTranslationActive && translationInputField != null) {
+                    val et = translationInputField!!
+                    val start = et.selectionStart
+                    val end = et.selectionEnd
+                    et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                } else if (isAiChatActive && aiInputField != null) {
+                    val et = aiInputField!!
+                    et.text.append(text)
+                } else {
+                    currentInputConnection?.setComposingText(text, 1)
+                }
                         }
                     }
                     override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
