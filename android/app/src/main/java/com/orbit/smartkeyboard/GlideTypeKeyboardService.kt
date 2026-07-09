@@ -185,7 +185,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
     private var voiceInsertionPos = -1
-    private var isKeyProcessing = false
+    private var isKeyProcessing = 0
 
     // Key preview and touches
     private var activePreviewView: View? = null
@@ -1079,6 +1079,20 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             ViewMode.PC_SHORTCUTS -> createPcShortcutsLayout()
             ViewMode.HINDI -> createHindiLayout()
             ViewMode.OCR -> createOcrLayout()
+        }
+        // Ambient background effect in key gaps
+        if (keyboardEffect in listOf("matrix_rain", "rgb_glow")) {
+            val bgEffectView = KeyboardEffectsView(this).apply {
+                setEffectType(keyboardEffect)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                post {
+                    setAmbient(true, width.coerceAtLeast(1), height.coerceAtLeast(1))
+                }
+            }
+            keyboardArea.addView(bgEffectView, 0)
         }
         keyboardArea.addView(keysLayout)
 
@@ -2190,8 +2204,8 @@ hideAiSystemOverlay()
     }
 
     private fun handleKeyPress(key: String) {
-        if (isKeyProcessing) return
-        isKeyProcessing = true
+        if (isKeyProcessing > 2) return
+        isKeyProcessing++
         try {
         if (isCtrlActive || isAltActive) {
             val ic = currentInputConnection
@@ -2412,7 +2426,7 @@ hideAiSystemOverlay()
                 updateKeyboardLayout()
             }
         }
-    } finally { isKeyProcessing = false }
+    } finally { isKeyProcessing-- }
     }
 
     private fun transformChar(c: Char, font: KeyboardFont): String {
@@ -3856,6 +3870,12 @@ hideAiSystemOverlay()
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
         }
+        // Drag handle bar at the top
+        val dragHandle = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(8))
+            background = createKeyDrawableWithRadius(Color.parseColor("#33FFFFFF"), dpToPx(2))
+        }
+        inner.addView(dragHandle)
         lateinit var inputEdit: EditText
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
@@ -3999,12 +4019,19 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
-        // Drag support
-        var dx = 0f; var dy = 0f
-        root.setOnTouchListener { _, event ->
+        // Drag handle
+        var dragDx = 0f; var dragDy = 0f
+        var dragging = false
+        dragHandle.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> { dx = event.rawX - lp.x; dy = event.rawY - lp.y; true }
-                MotionEvent.ACTION_MOVE -> { lp.x = (event.rawX - dx).toInt(); lp.y = (event.rawY - dy).toInt(); wm.updateViewLayout(root, lp); true }
+                MotionEvent.ACTION_DOWN -> { dragDx = event.rawX - lp.x; dragDy = event.rawY - lp.y; dragging = false; true }
+                MotionEvent.ACTION_MOVE -> {
+                    val newX = (event.rawX - dragDx).toInt(); val newY = (event.rawY - dragDy).toInt()
+                    if (Math.abs(newX - lp.x) > 5 || Math.abs(newY - lp.y) > 5) dragging = true
+                    lp.x = newX; lp.y = newY; wm.updateViewLayout(root, lp); true
+                }
+                MotionEvent.ACTION_UP -> { dragging = false; true }
+                MotionEvent.ACTION_CANCEL -> { dragging = false; true }
                 else -> false
             }
         }

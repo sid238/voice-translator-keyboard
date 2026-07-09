@@ -49,6 +49,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private var pressHeight = 0
     private var isPressed = false
     private var pressEffectActive = false
+    private var ambientMode = false
 
     init {
         isClickable = false
@@ -90,6 +91,36 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
     fun setReleased() {
         isPressed = false
+    }
+
+    fun setAmbient(enable: Boolean, w: Int, h: Int) {
+        ambientMode = enable
+        if (enable) {
+            pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
+            isPressed = true; pressEffectActive = true
+            if (effectType == "matrix_rain") matrixRainBg(w, h)
+            else if (effectType == "rgb_glow") rgbGlows.clear()
+            postInvalidateOnAnimation()
+        } else {
+            clearAll(); postInvalidate()
+        }
+    }
+
+    private fun matrixRainBg(w: Int, h: Int) {
+        matrixStreams.clear()
+        for (i in 0 until (w / 16).coerceAtLeast(8)) {
+            val x = random.nextFloat() * w
+            val y = random.nextFloat() * h * -1
+            val speed = 4f + random.nextFloat() * 10f
+            val chars = mutableListOf<String>()
+            for (j in 0..12) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
+            matrixStreams.add(MatrixStream(x, y, speed, chars, 0, 155 + random.nextInt(100)))
+        }
+    }
+
+    fun clearAmbient() {
+        ambientMode = false
+        clearAll(); postInvalidate()
     }
 
     fun triggerEffect(x: Float, y: Float, width: Int, height: Int) {
@@ -563,6 +594,27 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
                 paint.style = Paint.Style.FILL
                 paint.maskFilter = null
+            }
+        }
+
+        // Ambient mode: keep spawning effects across full area
+        if (ambientMode) {
+            needsRedraw = true
+            when (effectType) {
+                "matrix_rain" -> {
+                    if (matrixStreams.size < (width / 12).coerceAtLeast(8)) {
+                        matrixRainBg(width, height)
+                    }
+                }
+                "rgb_glow" -> {
+                    if (rgbGlows.isEmpty()) {
+                        val segW = width / 3; val segH = height / 4
+                        for (r in 0 until 4) for (c in 0 until 3) {
+                            val cx = segW * c + segW / 2f; val cy = segH * r + segH / 2f
+                            rgbGlows.add(RgbGlow(cx, cy, segW, segH, 1.0f, 60 + random.nextInt(80)))
+                        }
+                    }
+                }
             }
         }
 
