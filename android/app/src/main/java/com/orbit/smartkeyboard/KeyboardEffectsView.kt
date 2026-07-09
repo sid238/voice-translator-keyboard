@@ -8,6 +8,8 @@ import android.view.View
 import java.util.Random
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.roundToInt
+import kotlin.math.abs
 
 class KeyboardEffectsView @JvmOverloads constructor(
     context: Context,
@@ -27,7 +29,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private val galaxyParticles = mutableListOf<GalaxyParticle>()
     private val mechanicalFlashes = mutableListOf<MechanicalFlash>()
     private val trailPoints = mutableListOf<TrailPoint>()
-    private val rgbGlows = mutableListOf<RgbGlow>()
+    private val matrixColumns = mutableListOf<MatrixColumn>()
 
     private val trailPath = Path()
     private val trailPaint = Paint().apply {
@@ -74,7 +76,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
         galaxyParticles.clear()
         mechanicalFlashes.clear()
         trailPoints.clear()
-        rgbGlows.clear()
+        matrixColumns.clear()
         trailPath.reset()
         isPressed = false
         pressEffectActive = false
@@ -100,7 +102,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
             isPressed = true; pressEffectActive = true
             if (effectType == "matrix_rain") matrixRainBg(w, h)
-            else if (effectType == "rgb_glow") rgbGlows.clear()
+            else if (effectType == "rgb_glow") { matrixColumns.clear(); for (i in 0 until 4) spawnMatrixColumn(w, h, 10, 5) }
             postInvalidateOnAnimation()
         } else {
             clearAll(); postInvalidate()
@@ -132,7 +134,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             "galaxy" -> { galaxyParticles.clear(); spawnGalaxy(x, y) }
             "mechanical_flash" -> { mechanicalFlashes.clear(); spawnMechanicalFlash(x, y, width, height) }
             "neon_trail" -> spawnNeonTap(x, y)
-            "rgb_glow" -> { rgbGlows.clear(); spawnRgbGlow(x, y, width, height) }
+            "rgb_glow" -> { /* ambient only */ }
         }
         postInvalidateOnAnimation()
     }
@@ -278,23 +280,23 @@ class KeyboardEffectsView @JvmOverloads constructor(
         mechanicalFlashes.add(MechanicalFlash(x, y, width, height, 255))
     }
 
-    // --- RGB GLOW ---
-    private class RgbGlow(
-        var x: Float,
-        var y: Float,
-        val keyWidth: Int,
-        val keyHeight: Int,
-        var scale: Float,
-        var alpha: Int,
-        val phase: Float = 0f,
-        val speedX: Float = 0f,
-        val speedY: Float = 0f,
-        var originX: Float = 0f,
-        var originY: Float = 0f
+    // --- MATRIX DIGITAL RAIN (Ambient) ---
+    private class MatrixColumn(
+        var currentRow: Float,
+        var colIndex: Int,
+        var speed: Float,
+        var brightness: Float,
+        var headAlpha: Int,
+        val phaseOffset: Float,
+        var alive: Boolean,
+        var spawnDelay: Float = 0f
     )
 
-    private fun spawnRgbGlow(x: Float, y: Float, width: Int, height: Int) {
-        rgbGlows.add(RgbGlow(x, y, width, height, 1.0f, 255))
+    private fun spawnMatrixColumn(w: Int, h: Int, cols: Int, rows: Int) {
+        val col = random.nextInt(cols)
+        val speed = 1.2f + random.nextFloat() * 2.0f
+        val brightness = 0.6f + random.nextFloat() * 0.4f
+        matrixColumns.add(MatrixColumn(-random.nextFloat() * rows * 0.5f, col, speed, brightness, 180 + random.nextInt(76), random.nextFloat() * 6.28f, true))
     }
 
     // --- ON DRAW ---
@@ -339,16 +341,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
                         mechanicalFlashes[0].alpha = 255
                     } else {
                         spawnMechanicalFlash(pressX, pressY, pressWidth, pressHeight)
-                    }
-                }
-                "rgb_glow" -> {
-                    // Keep glow bright while pressed
-                    if (rgbGlows.isNotEmpty()) {
-                        val g = rgbGlows[0]
-                        g.alpha = 255
-                        g.scale = 1.0f
-                    } else {
-                        spawnRgbGlow(pressX, pressY, pressWidth, pressHeight)
                     }
                 }
             }
@@ -566,39 +558,47 @@ class KeyboardEffectsView @JvmOverloads constructor(
             }
         }
 
-        // 7. Draw RGB Glow around pressed keys
-        if (rgbGlows.isNotEmpty()) {
+        // 7. Draw Matrix Digital Rain (ambient key illumination)
+        if (matrixColumns.isNotEmpty()) {
             needsRedraw = true
-            val iterator = rgbGlows.iterator()
-            while (iterator.hasNext()) {
-                val g = iterator.next()
-                if (!isPressed) {
-                    g.scale += 0.03f
-                    g.alpha -= 4
+            val time = System.currentTimeMillis() / 1000f
+            val cols = 10; val rows = 5
+            val cellW = width / cols; val cellH = height / rows
+            val iter = matrixColumns.iterator()
+            while (iter.hasNext()) {
+                val mc = iter.next()
+                if (!mc.alive) { iter.remove(); continue }
+                mc.currentRow += mc.speed * 0.016f
+                if (mc.currentRow > rows) {
+                    mc.currentRow = -0.5f - random.nextFloat() * 1.5f
+                    mc.colIndex = random.nextInt(cols)
+                    mc.speed = 1.2f + random.nextFloat() * 2.0f
+                    mc.brightness = 0.6f + random.nextFloat() * 0.4f
                 }
-                if (g.alpha <= 0) {
-                    iterator.remove()
-                    continue
+                val head = mc.currentRow
+                for (t in 0 until 4) {
+                    val r = head - t * 0.333f
+                    if (r < -0.5f || r >= rows) continue
+                    val frac = (1f - t * 0.25f).coerceIn(0f, 1f)
+                    val alpha = (mc.headAlpha * frac * mc.brightness).toInt().coerceIn(0, 255)
+                    if (alpha < 5) continue
+                    val cx = mc.colIndex * cellW + cellW / 2f
+                    val cy = r * cellH + cellH / 2f
+                    val green = when (t) {
+                        0 -> Color.rgb(140, 255, 140)
+                        1 -> Color.rgb(40, 200, 60)
+                        2 -> Color.rgb(10, 130, 30)
+                        else -> Color.rgb(5, 80, 15)
+                    }
+                    paint.style = Paint.Style.FILL
+                    paint.color = green
+                    paint.alpha = alpha
+                    paint.maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.OUTER)
+                    val pw = (cellW * 0.5f).coerceAtMost(14f)
+                    val ph = (cellH * 0.5f).coerceAtMost(10f)
+                    canvas.drawRoundRect(cx - pw, cy - ph, cx + pw, cy + ph, 4f, 4f, paint)
+                    paint.maskFilter = null
                 }
-
-                val glowHue = (rgbHue + g.alpha / 5f) % 360f
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 6f
-                paint.color = Color.HSVToColor(g.alpha, floatArrayOf(glowHue, 1f, 1f))
-                paint.maskFilter = BlurMaskFilter(12f, BlurMaskFilter.Blur.OUTER)
-
-                val rectWidth = g.keyWidth * g.scale
-                val rectHeight = g.keyHeight * g.scale
-                val rect = RectF(
-                    g.x - rectWidth / 2,
-                    g.y - rectHeight / 2,
-                    g.x + rectWidth / 2,
-                    g.y + rectHeight / 2
-                )
-                canvas.drawRoundRect(rect, 14f, 14f, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.maskFilter = null
             }
         }
 
@@ -612,24 +612,9 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     }
                 }
                 "rgb_glow" -> {
-                    if (rgbGlows.isEmpty()) {
-                        val cols = 8; val rows = 5
-                        val segW = width / cols; val segH = height / rows
-                        for (r in 0 until rows) for (c in 0 until cols) {
-                            val cx = segW * c + segW / 2f; val cy = segH * r + segH / 2f
-                            val phase = Math.PI.toFloat() * 2 * (r * cols + c) / (rows * cols)
-                            rgbGlows.add(RgbGlow(cx, cy, segW, segH, 1.0f, 100 + random.nextInt(80),
-                                phase, (random.nextFloat() - 0.5f) * 0.5f, (random.nextFloat() - 0.5f) * 0.5f, cx, cy))
-                        }
-                    } else {
-                        val time = System.currentTimeMillis() / 1000f
-                        for (g in rgbGlows) {
-                            val wave = sin(time * 1.2f + g.phase) * 8f
-                            g.x = g.originX + wave * g.speedX * 10f + cos(time * 0.8f + g.phase * 1.5f) * 6f
-                            g.y = g.originY + wave * g.speedY * 10f + sin(time * 1.0f + g.phase * 0.7f) * 6f
-                            g.alpha = (120 + 80 * (sin(time * 1.5f + g.phase) * 0.5f + 0.5f)).toInt().coerceIn(40, 200)
-                            g.scale = 1.2f + 0.6f * (sin(time * 0.6f + g.phase * 0.8f) * 0.5f + 0.5f)
-                        }
+                    val activeCount = matrixColumns.count { it.alive }
+                    if (activeCount < 3) {
+                        spawnMatrixColumn(width, height, 10, 5)
                     }
                 }
             }

@@ -1022,7 +1022,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 landscapeBufferField = this
                 showSoftInputOnFocus = false
                 val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
-                if (existingText != null) setText(existingText)
+                if (existingText != null) {
+                    setText(existingText)
+                    currentInputConnection?.deleteSurroundingText(existingText.length, 0)
+                }
                 setSelection(existingText?.length ?: 0)
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
@@ -1047,18 +1050,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
                 setOnClickListener {
                     val inputText = bufferEdit.text.toString()
-                    val ic = currentInputConnection
-                    if (inputText.isNotEmpty() && ic != null) {
-                        val currentText = ic.getTextBeforeCursor(2000, 0)?.toString()
-                        var prefixLen = 0
-                        if (currentText != null) {
-                            val bufText = landscapeBufferText
-                            if (bufText != null && currentText.endsWith(bufText)) prefixLen = bufText.length
-                        }
-                        ic.beginBatchEdit()
-                        if (prefixLen > 0) ic.deleteSurroundingText(prefixLen, 0)
-                        ic.commitText(inputText, 1)
-                        ic.endBatchEdit()
+                    if (inputText.isNotEmpty()) {
+                        currentInputConnection?.commitText(inputText, 1)
                     }
                     landscapeBufferText = null
                     requestHideSelf(0)
