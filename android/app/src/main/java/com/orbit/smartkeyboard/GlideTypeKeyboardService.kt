@@ -4060,22 +4060,51 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         Thread {
             var conn: HttpURLConnection? = null
             try {
-                val prompt = when (action) {
-                    "Write Email" -> "Write a professional email. Context: $text"
-                    "Write Message" -> "Write a friendly message. Context: $text"
-                    "Rewrite" -> "Rewrite the following text to be clearer and more engaging: $text"
-                    "Summarize" -> "Summarize the following text concisely: $text"
-                    "Make Professional" -> "Rewrite the following text in a professional tone: $text"
-                    "Make Casual" -> "Rewrite the following text in a casual, friendly tone: $text"
-                    else -> text
+                val grammarPrompt = "Fix the grammar and spelling in the following text. Return ONLY the corrected text without any explanation, quotes, or prefix:\n\n$text"
+                val isGrammar = action == "Fix Grammar"
+                val userMsg = if (isGrammar) grammarPrompt else text
+
+                // Build conversation history for memory
+                val messages = org.json.JSONArray()
+                // System prompt
+                messages.put(org.json.JSONObject().apply {
+                    put("role", "system")
+                    put("content", """You are Orbit AI, a smart, fast and helpful AI assistant built into a keyboard. Always introduce yourself as Orbit AI when asked. Be concise but informative. If asked to write code, provide complete working code. If asked general questions, answer clearly and accurately. Never say you are Gemini, ChatGPT, or any other AI. You are ONLY Orbit AI. For grammar fixes, return ONLY the corrected text without any prefix or explanation.""")
+                })
+                // Past conversation context (last 10 exchanges for memory)
+                val contextMessages = aiChatMessages.takeLast(10)
+                for ((isUserMsg, msgText) in contextMessages) {
+                    messages.put(org.json.JSONObject().apply {
+                        put("role", if (isUserMsg) "user" else "assistant")
+                        put("content", msgText)
+                    })
                 }
-                val encoded = java.net.URLEncoder.encode(prompt, "UTF-8")
-                val url = URL("https://api-faa.my.id/faa/bard-google?query=$encoded")
+                // Current user message
+                messages.put(org.json.JSONObject().apply {
+                    put("role", "user")
+                    put("content", userMsg)
+                })
+
+                val requestBody = org.json.JSONObject().apply {
+                    put("messages", messages)
+                    put("stream", false)
+                }
+
+                val url = URL("https://yenus.created.app/integrations/google-gemini-1-5-flash")
                 conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-                conn.connectTimeout = 15000
-                conn.readTimeout = 15000
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("accept", "*/*")
+                conn.setRequestProperty("origin", "https://yenus.created.app")
+                conn.setRequestProperty("referer", "https://yenus.created.app/")
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                conn.setRequestProperty("x-createxyz-project-id", "31b1368e-b142-4030-bef4-1a10d86e4873")
+                conn.doOutput = true
+                conn.connectTimeout = 30000
+                conn.readTimeout = 30000
+                conn.outputStream.use { os ->
+                    os.write(requestBody.toString().toByteArray(Charsets.UTF_8))
+                }
 
                 val responseCode = conn.responseCode
                 val response = if (responseCode == 200) {
@@ -4097,11 +4126,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
                 try {
                     val json = org.json.JSONObject(response)
-                    val result = json.optString("result", json.optString("response", json.toString()))
-                    handler.post { callback(result) }
+                    val result = json.optString("result", json.optString("response", json.optString("text", json.optString("content", json.toString()))))
+                    // If grammar fix, clean up extra whitespace
+                    val finalResult = if (isGrammar) result.trim() else result
+                    handler.post { callback(finalResult) }
                 } catch (e: Exception) {
-                    // If JSON parsing fails, return raw response
-                    handler.post { callback(response.take(2000)) }
+                    handler.post { callback(response.take(3000)) }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AI_Assist", "Error: ${e.message}", e)
