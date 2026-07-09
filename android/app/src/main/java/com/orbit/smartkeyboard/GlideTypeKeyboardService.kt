@@ -83,7 +83,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var lastProcessedSystemClip: String? = null
     private var isCtrlActive = false
     private var isAltActive = false
-    private var autoCapEnabled = true
+    private var autoCapEnabled = false
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
     private var keySpacingDp = 5
@@ -1093,20 +1093,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         mainLayout.addView(keyboardArea)
         keyboardContainer.addView(mainLayout)
-        if (isAiChatActive) {
-            // Add AI panel as overlay on top, positioned at top of container
-            val aiContent = createAiOverlayContent()
-            aiContent.layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(240)).apply {
-                gravity = Gravity.TOP
-                setMargins(dpToPx(4), dpToPx(4), dpToPx(4), 0)
-            }
-            aiContent.elevation = dpToPx(8).toFloat()
-            keyboardContainer.addView(aiContent)
-            // Increase container height to make room
-            val cont = keyboardContainer
-            cont.layoutParams.height = (cont.layoutParams.height + dpToPx(244))
-            cont.requestLayout()
-        }
         } catch (e: Exception) {
             android.util.Log.e("Keyboard", "Layout error", e)
         }
@@ -1587,6 +1573,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this@GlideTypeKeyboardService)) {
+                        Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for AI popup", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                        isAiChatActive = false; updateKeyboardLayout()
+                        return@setOnClickListener
+                    }
+                    showAiSystemOverlay()
                 } else {
                     hideAiSystemOverlay()
                 }
@@ -2256,8 +2249,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val selEnd = et.selectionEnd.coerceAtLeast(0)
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    val t = et.text.toString()
-                    if (t.isNotEmpty()) et.text.delete(t.length - 1, t.length)
+                    if (et.length() > 0) et.text.delete(et.length() - 1, et.length())
                 }
                 "enter", "↵" -> { }
                 "spacebar", " ", "␣" -> et.text.replace(selStart, selEnd, " ")
@@ -3193,8 +3185,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val visibleYesterday = yesterdayItems.take(20)
             val sections = listOfNotNull(
                 Section("Pinned", pinnedItems).takeIf { pinnedItems.isNotEmpty() },
-                Section("Recent ($visibleRecent.size/${recentItems.size})", visibleRecent).takeIf { visibleRecent.isNotEmpty() },
-                Section("Yesterday ($visibleYesterday.size/${yesterdayItems.size})", visibleYesterday).takeIf { visibleYesterday.isNotEmpty() }
+                Section("Recent", visibleRecent).takeIf { visibleRecent.isNotEmpty() },
+                Section("Yesterday", visibleYesterday).takeIf { visibleYesterday.isNotEmpty() }
             )
 
             for ((secIdx, section) in sections.withIndex()) {
@@ -3589,6 +3581,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createAiOverlayContent(): View {
         hideAiSystemOverlay()
+        return createAiOverlayPanel()
+    }
+
+    private fun createAiOverlayPanel(): View {
         val screenWidth = resources.displayMetrics.widthPixels
         val cardHeight = dpToPx(240)
 
@@ -3745,14 +3741,45 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setPadding(0, 0, 0, 0)
         }
         root.addView(card)
+        aiOverlayChatContainer = chatContainer
+
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val loc = IntArray(2)
+        keyboardContainer.getLocationOnScreen(loc)
+        val keyboardY = loc[1]
+        val screenHeight = resources.displayMetrics.heightPixels
+        val keyboardHeightOnScreen = screenHeight - keyboardY + dpToPx(4)
+        val overlayWidth = keyboardContainer.width.coerceAtLeast(screenWidth - dpToPx(16))
+        val lp = WindowManager.LayoutParams(
+            overlayWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = keyboardHeightOnScreen
+            token = keyboardContainer.windowToken
+        }
+        wm.addView(root, lp)
         aiSystemOverlayView = root
         aiSystemOverlayRoot = root
-        aiOverlayChatContainer = chatContainer
         return root
+    }
+
+    private fun showAiSystemOverlay() {
+        createAiOverlayPanel()
     }
 
     private fun hideAiSystemOverlay() {
         internalEditTextFocused = null
+        aiSystemOverlayView?.let {
+            try {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it)
+            } catch (_: Exception) { }
+        }
         aiSystemOverlayView = null
         aiSystemOverlayRoot = null
         aiOverlayChatContainer = null
