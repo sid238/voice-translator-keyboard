@@ -3918,6 +3918,7 @@ hideAiSystemOverlay()
         }
         translationOverlayView = null
     }
+    private fun formatMarkdown(text: String): android.text.SpannableStringBuilder {
         val sb = android.text.SpannableStringBuilder(text)
         // Bold: **text**
         val boldRegex = Regex("\\*\\*(.+?)\\*\\*")
