@@ -3511,14 +3511,15 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             Triple(R.drawable.ic_mic, "#AAAAAA") { if (isListening) stopVoiceInput() else startVoiceInput() },
             Triple(0, "#7C4DFF") {
                 val msg = inputEdit.text.toString().trim()
-                if (msg.isEmpty()) return@setOnClickListener
-                inputEdit.setText("")
-                aiChatMessages.add(true to msg)
-                currentAiResponse = null; isAiLoading = true; updateKeyboardLayout()
-                aiAssist("Chat", msg) { result ->
-                    val response = result ?: "Sorry, I couldn't process that."
-                    aiChatMessages.add(false to response)
-                    currentAiResponse = response; isAiLoading = false; updateKeyboardLayout()
+                if (msg.isNotEmpty()) {
+                    inputEdit.setText("")
+                    aiChatMessages.add(true to msg)
+                    currentAiResponse = null; isAiLoading = true; updateKeyboardLayout()
+                    aiAssist("Chat", msg) { result ->
+                        val response = result ?: "Sorry, I couldn't process that."
+                        aiChatMessages.add(false to response)
+                        currentAiResponse = response; isAiLoading = false; updateKeyboardLayout()
+                    }
                 }
             }
         )) {
