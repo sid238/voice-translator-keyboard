@@ -29,7 +29,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private val galaxyParticles = mutableListOf<GalaxyParticle>()
     private val mechanicalFlashes = mutableListOf<MechanicalFlash>()
     private val trailPoints = mutableListOf<TrailPoint>()
-    private val matrixColumns = mutableListOf<MatrixColumn>()
 
     private val trailPath = Path()
     private val trailPaint = Paint().apply {
@@ -76,7 +75,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
         galaxyParticles.clear()
         mechanicalFlashes.clear()
         trailPoints.clear()
-        matrixColumns.clear()
+        snakeWave = null
         trailPath.reset()
         isPressed = false
         pressEffectActive = false
@@ -102,7 +101,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
             isPressed = true; pressEffectActive = true
             if (effectType == "matrix_rain") matrixRainBg(w, h)
-            else if (effectType == "rgb_glow") { matrixColumns.clear(); for (i in 0 until 4) spawnMatrixColumn(w, h, 10, 5) }
+            else if (effectType == "rgb_glow") { snakeWave = SnakeWave(0f, 6f, true, random.nextFloat() * 360f) }
             postInvalidateOnAnimation()
         } else {
             clearAll(); postInvalidate()
@@ -111,13 +110,13 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
     private fun matrixRainBg(w: Int, h: Int) {
         matrixStreams.clear()
-        for (i in 0 until (w / 16).coerceAtLeast(8)) {
+        for (i in 0 until (w / 10).coerceAtLeast(16)) {
             val x = random.nextFloat() * w
             val y = random.nextFloat() * h * -1
-            val speed = 4f + random.nextFloat() * 10f
+            val speed = 6f + random.nextFloat() * 12f
             val chars = mutableListOf<String>()
-            for (j in 0..12) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
-            matrixStreams.add(MatrixStream(x, y, speed, chars, 0, 155 + random.nextInt(100)))
+            for (j in 0..18) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
+            matrixStreams.add(MatrixStream(x, y, speed, chars, 0, 200 + random.nextInt(56)))
         }
     }
 
@@ -280,23 +279,23 @@ class KeyboardEffectsView @JvmOverloads constructor(
         mechanicalFlashes.add(MechanicalFlash(x, y, width, height, 255))
     }
 
-    // --- MATRIX DIGITAL RAIN (Ambient) ---
-    private class MatrixColumn(
-        var currentRow: Float,
-        var colIndex: Int,
-        var speed: Float,
-        var brightness: Float,
-        var headAlpha: Int,
-        val phaseOffset: Float,
-        var alive: Boolean,
-        var spawnDelay: Float = 0f
+    // --- SNAKE WAVE RGB (Ambient) ---
+    private class SnakeWave(
+        var position: Float,             // 0..totalCells, continuous wave head
+        var speed: Float,                 // cells per second
+        var active: Boolean,
+        var hueOffset: Float
     )
 
-    private fun spawnMatrixColumn(w: Int, h: Int, cols: Int, rows: Int) {
-        val col = random.nextInt(cols)
-        val speed = 1.2f + random.nextFloat() * 2.0f
-        val brightness = 0.6f + random.nextFloat() * 0.4f
-        matrixColumns.add(MatrixColumn(-random.nextFloat() * rows * 0.5f, col, speed, brightness, 180 + random.nextInt(76), random.nextFloat() * 6.28f, true))
+    private var snakeWave: SnakeWave? = null
+
+    private fun snakePathToGrid(pos: Float, cols: Int, rows: Int): Pair<Int, Int> {
+        val total = cols * rows
+        val p = ((pos % total) + total) % total
+        val row = (p / cols).toInt().coerceIn(0, rows - 1)
+        val colInRow = (p % cols).toInt()
+        val col = if (row % 2 == 0) colInRow else cols - 1 - colInRow
+        return Pair(row, col)
     }
 
     // --- ON DRAW ---
@@ -468,19 +467,21 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     continue
                 }
 
-                paint.textSize = 28f
+                paint.textSize = 32f
                 paint.typeface = Typeface.MONOSPACE
                 paint.style = Paint.Style.FILL
 
                 for (j in 0 until s.chars.size) {
-                    val charY = s.y - (j * 32f)
+                    val charY = s.y - (j * 34f)
                     if (charY < 0) continue
 
                     val itemAlpha = (s.alpha * (1f - j.toFloat() / s.chars.size)).toInt().coerceIn(0, 255)
                     if (j == 0) {
-                        paint.color = Color.rgb(180, 255, 180)
+                        paint.color = Color.rgb(200, 255, 200)
+                        paint.maskFilter = BlurMaskFilter(6f, BlurMaskFilter.Blur.OUTER)
                     } else {
-                        paint.color = Color.rgb(0, 255, 70)
+                        paint.color = Color.rgb(20, 255, 80)
+                        paint.maskFilter = null
                     }
                     paint.alpha = itemAlpha
 
@@ -491,6 +492,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     }
 
                     canvas.drawText(displayChar, s.x, charY, paint)
+                    paint.maskFilter = null
                 }
             }
             if (random.nextFloat() > 0.5f) {
@@ -558,46 +560,44 @@ class KeyboardEffectsView @JvmOverloads constructor(
             }
         }
 
-        // 7. Draw Matrix Digital Rain (ambient key illumination)
-        if (matrixColumns.isNotEmpty()) {
+        // 7. Draw Snake Wave RGB (ambient key illumination)
+        val sw = snakeWave
+        if (ambientMode && sw != null && sw.active) {
             needsRedraw = true
-            val time = System.currentTimeMillis() / 1000f
+            val dt = 0.016f
             val cols = 10; val rows = 5
             val cellW = width / cols; val cellH = height / rows
-            val iter = matrixColumns.iterator()
-            while (iter.hasNext()) {
-                val mc = iter.next()
-                if (!mc.alive) { iter.remove(); continue }
-                mc.currentRow += mc.speed * 0.016f
-                if (mc.currentRow > rows) {
-                    mc.currentRow = -0.5f - random.nextFloat() * 1.5f
-                    mc.colIndex = random.nextInt(cols)
-                    mc.speed = 1.2f + random.nextFloat() * 2.0f
-                    mc.brightness = 0.6f + random.nextFloat() * 0.4f
-                }
-                val head = mc.currentRow
-                for (t in 0 until 4) {
-                    val r = head - t * 0.333f
-                    if (r < -0.5f || r >= rows) continue
-                    val frac = (1f - t * 0.25f).coerceIn(0f, 1f)
-                    val alpha = (mc.headAlpha * frac * mc.brightness).toInt().coerceIn(0, 255)
-                    if (alpha < 5) continue
-                    val cx = mc.colIndex * cellW + cellW / 2f
+            sw.position += sw.speed * dt
+            val totalCells = cols * rows
+            val hue = (sw.hueOffset + sw.position * 360f / totalCells) % 360f
+
+            for (r in 0 until rows) {
+                for (c in 0 until cols) {
+                    val colInRow = if (r % 2 == 0) c else cols - 1 - c
+                    val cellIndex = r * cols + colInRow
+                    var dist = sw.position - cellIndex
+                    dist = ((dist % totalCells) + totalCells) % totalCells
+                    if (dist > totalCells * 0.5f) dist = totalCells - dist
+                    val intensity = (1f - (dist / 3f).coerceIn(0f, 1f)).toDouble()
+                    val alpha = (intensity * intensity * 220).toInt().coerceIn(0, 220)
+                    if (alpha < 8) continue
+
+                    val cellHue = (hue + dist * 30f) % 360f
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 5f
+                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.9f, 1f))
+                    paint.maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.OUTER)
+                    val cx = c * cellW + cellW / 2f
                     val cy = r * cellH + cellH / 2f
-                    val green = when (t) {
-                        0 -> Color.rgb(140, 255, 140)
-                        1 -> Color.rgb(40, 200, 60)
-                        2 -> Color.rgb(10, 130, 30)
-                        else -> Color.rgb(5, 80, 15)
-                    }
-                    paint.style = Paint.Style.FILL
-                    paint.color = green
-                    paint.alpha = alpha
-                    paint.maskFilter = BlurMaskFilter(10f, BlurMaskFilter.Blur.OUTER)
-                    val pw = (cellW * 0.5f).coerceAtMost(14f)
-                    val ph = (cellH * 0.5f).coerceAtMost(10f)
+                    val pw = (cellW * 0.45f).coerceAtMost(14f)
+                    val ph = (cellH * 0.45f).coerceAtMost(10f)
                     canvas.drawRoundRect(cx - pw, cy - ph, cx + pw, cy + ph, 4f, 4f, paint)
+
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2f
                     paint.maskFilter = null
+                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.6f, 0.7f))
+                    canvas.drawRoundRect(cx - pw + 2f, cy - ph + 2f, cx + pw - 2f, cy + ph - 2f, 3f, 3f, paint)
                 }
             }
         }
@@ -607,15 +607,12 @@ class KeyboardEffectsView @JvmOverloads constructor(
             needsRedraw = true
             when (effectType) {
                 "matrix_rain" -> {
-                    if (matrixStreams.size < (width / 12).coerceAtLeast(8)) {
+                    if (matrixStreams.size < (width / 8).coerceAtLeast(12)) {
                         matrixRainBg(width, height)
                     }
                 }
                 "rgb_glow" -> {
-                    val activeCount = matrixColumns.count { it.alive }
-                    if (activeCount < 3) {
-                        spawnMatrixColumn(width, height, 10, 5)
-                    }
+                    if (snakeWave == null) snakeWave = SnakeWave(0f, 6f, true, random.nextFloat() * 360f)
                 }
             }
         }
