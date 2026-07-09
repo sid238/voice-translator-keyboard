@@ -3839,6 +3839,20 @@ hideAiSystemOverlay()
             }
         }
         navRow.addView(sourceLangBtn)
+        val targetLangBtn = TextView(this).apply {
+            text = translationTargetLang.uppercase()
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
+            setOnClickListener {
+                vibrateClick()
+                showLanguageMenu(this, false)
+            }
+        }
+        navRow.addView(targetLangBtn)
         val switchLangBtn = TextView(this).apply {
             text = "⇄"
             setTextColor(Color.parseColor(themeAccentColor))
@@ -3856,20 +3870,6 @@ hideAiSystemOverlay()
             }
         }
         navRow.addView(switchLangBtn)
-        val targetLangBtn = TextView(this).apply {
-            text = translationTargetLang.uppercase()
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
-            setOnClickListener {
-                vibrateClick()
-                showLanguageMenu(this, false)
-            }
-        }
-        navRow.addView(targetLangBtn)
         navRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         navRow.addView(FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
