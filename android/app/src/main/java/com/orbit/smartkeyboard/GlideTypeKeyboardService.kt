@@ -170,6 +170,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var isAiChatActive = false
     private var aiSystemOverlayView: View? = null
     private var aiSystemOverlayRoot: FrameLayout? = null
+    private var aiOverlayChatContainer: LinearLayout? = null
+    private var selectedAppText: String? = null
+    private var fixGrammarChip: View? = null
     private var currentAiResponse: String? = null
     private var isAiLoading = false
     private var aiInputField: EditText? = null
@@ -379,6 +382,87 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         hideAiSystemOverlay()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int, oldSelEnd: Int,
+        newSelStart: Int, newSelEnd: Int,
+        candidatesStart: Int, candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        handler.removeCallbacks(selectedTextCheckRunnable)
+        handler.postDelayed(selectedTextCheckRunnable, 300)
+    }
+
+    private val selectedTextCheckRunnable = Runnable {
+        if (!isAiChatActive) {
+            val sel = currentInputConnection?.getSelectedText(0)?.toString()?.trim()
+            if (!sel.isNullOrEmpty() && sel.length < 500) {
+                selectedAppText = sel
+                showFixGrammarChip()
+            } else {
+                selectedAppText = null
+                hideFixGrammarChip()
+            }
+        }
+    }
+
+    private fun showFixGrammarChip() {
+        if (fixGrammarChip != null) return
+        if (!::keyboardContainer.isInitialized) return
+        val chip = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF"), 6)
+            isClickable = true
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28))
+            setOnClickListener { vibrateClick()
+                if (selectedAppText != null) {
+                    if (!isAiChatActive) {
+                        isAiChatActive = true
+                        isTranslationActive = false
+                        showAiSystemOverlay()
+                        updateKeyboardLayout()
+                    }
+                    val text = selectedAppText ?: return@setOnClickListener
+                    selectedAppText = null
+                    aiChatMessages.add(true to "Fix grammar: $text")
+                    aiOverlayChatContainer?.addView(createChatBubble(true, "Fix grammar: $text"))
+                    aiOverlayChatContainer?.let { c ->
+                        val placeholder = TextView(this@GlideTypeKeyboardService).apply {
+                            text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); tag = "aiTyping"
+                            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                        }
+                        c.addView(placeholder)
+                        c.post { (c.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
+                    }
+                    aiAssist("Fix Grammar", text) { result ->
+                        val response = result ?: "Sorry, I couldn't process that."
+                        aiChatMessages.add(false to response)
+                        aiOverlayChatContainer?.findViewWithTag<View>("aiTyping")?.let { aiOverlayChatContainer?.removeView(it) }
+                        aiOverlayChatContainer?.addView(createChatBubble(false, response))
+                        aiOverlayChatContainer?.post { (aiOverlayChatContainer?.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
+                    }
+                    hideFixGrammarChip()
+                }
+            }
+            addView(TextView(this@GlideTypeKeyboardService).apply {
+                text = "  Fix Grammar  "; setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { gravity = Gravity.CENTER }
+            })
+        }
+        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28)).apply {
+            gravity = Gravity.TOP or Gravity.END
+            setMargins(0, dpToPx(30), dpToPx(8), 0)
+        }
+        keyboardContainer.addView(chip, params)
+        fixGrammarChip = chip
+    }
+
+    private fun hideFixGrammarChip() {
+        fixGrammarChip?.let { if (::keyboardContainer.isInitialized) keyboardContainer.removeView(it) }
+        fixGrammarChip = null
     }
 
     private fun loadPreferences() {
@@ -879,6 +963,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val keyboardWidthPx = (screenWidth * (keyboardWidthPercent / 100f)).toInt()
         try {
             keyboardContainer.removeAllViews()
+            fixGrammarChip = null
 
             val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             val calculatedHeight = if (isLandscape) {
@@ -2161,7 +2246,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         // Route to internal EditText (AI input, etc.) when focused
-        val intFocused = internalEditTextFocused ?: if (isAiChatActive) aiInputField else null
+        val intFocused = internalEditTextFocused
         if (intFocused != null && intFocused !== translationInputField) {
             val et = intFocused
             val start = et.selectionStart.coerceAtLeast(0)
@@ -3420,7 +3505,39 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         return bar
     }
 
-
+    private fun createChatBubble(isUser: Boolean, text: String): View {
+        val bubble = TextView(this).apply {
+            this.text = if (!isUser) formatMarkdown(text) else text
+            setTextColor(if (isUser) Color.WHITE else Color.parseColor("#E0E0E0"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setLineSpacing(2f, 1f)
+            setPadding(dpToPx(8), dpToPx(5), dpToPx(8), dpToPx(5))
+            background = GradientDrawable().apply {
+                cornerRadius = dpToPx(10).toFloat()
+                setColor(Color.parseColor(if (isUser) "#7C4DFF" else "#222244"))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dpToPx(3), 0, dpToPx(3))
+                if (isUser) {
+                    gravity = Gravity.END
+                    minimumWidth = dpToPx(60)
+                    rightMargin = dpToPx(8)
+                } else {
+                    minimumWidth = dpToPx(80)
+                    leftMargin = dpToPx(4)
+                }
+            }
+            setOnLongClickListener {
+                currentInputConnection?.commitText(text, 1)
+                Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+        return bubble
+    }
 
     private fun showAiSystemOverlay() {
         hideAiSystemOverlay()
@@ -3469,18 +3586,25 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         })
         inner.addView(header)
 
+        val chatContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        aiOverlayChatContainer = chatContainer
+        for ((isUser, msg) in aiChatMessages) {
+            chatContainer.addView(createChatBubble(isUser, msg))
+        }
+        if (!aiChatMessages.any() && currentAiResponse == null) {
+            chatContainer.addView(TextView(this).apply {
+                text = "Ask anything..."; setTextColor(Color.parseColor("#66FFFFFF"))
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            })
+        }
         val respScroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         }
-        respScroll.addView(TextView(this).apply {
-            val resp = currentAiResponse ?: "Ask anything..."
-            text = if (currentAiResponse != null) formatMarkdown(resp) else resp
-            setTextColor(Color.parseColor("#E0E0E0"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setLineSpacing(3f, 1f)
-            setPadding(0, dpToPx(4), 0, dpToPx(4))
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        })
+        respScroll.addView(chatContainer)
         inner.addView(respScroll)
 
         val inputRow = LinearLayout(this).apply {
@@ -3496,7 +3620,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             setPadding(dpToPx(10), dpToPx(4), dpToPx(10), dpToPx(4))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
             aiInputField = this
-            onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus -> internalEditTextFocused = if (hasFocus) this else null }
+            setOnClickListener { internalEditTextFocused = this }
             post { requestFocus() }
         }
         inputRow.addView(inputEdit)
@@ -3507,15 +3631,23 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 if (msg.isNotEmpty()) {
                     inputEdit.setText("")
                     aiChatMessages.add(true to msg)
-                    currentAiResponse = null; isAiLoading = true
+                    aiOverlayChatContainer?.addView(createChatBubble(true, msg))
+                    aiOverlayChatContainer?.let { c ->
+                        val placeholder = TextView(this@GlideTypeKeyboardService).apply {
+                            text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
+                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                            tag = "aiTyping"
+                        }
+                        c.addView(placeholder)
+                        c.post { (c.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
+                    }
                     aiAssist("Chat", msg) { result ->
                         val response = result ?: "Sorry, I couldn't process that."
                         aiChatMessages.add(false to response)
-                        currentAiResponse = response; isAiLoading = false
-                        // Refresh the overlay text
-                        if (respScroll.getChildAt(0) is TextView) {
-                            (respScroll.getChildAt(0) as TextView).text = formatMarkdown(response)
-                        }
+                        aiOverlayChatContainer?.findViewWithTag<View>("aiTyping")?.let { aiOverlayChatContainer?.removeView(it) }
+                        aiOverlayChatContainer?.addView(createChatBubble(false, response))
+                        aiOverlayChatContainer?.post { (aiOverlayChatContainer?.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
                     }
                 }
             }
@@ -3573,6 +3705,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun hideAiSystemOverlay() {
+        internalEditTextFocused = null
         aiSystemOverlayView?.let {
             try {
                 (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it)
