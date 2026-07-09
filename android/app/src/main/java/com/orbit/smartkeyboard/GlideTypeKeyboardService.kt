@@ -3570,7 +3570,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22)).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
                     setOnClickListener { vibrateClick(); action() }
                     addView(TextView(this@GlideTypeKeyboardService).apply {
-                        text = icon; setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+                        this.text = icon; setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
                         layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
                     })
                 })
