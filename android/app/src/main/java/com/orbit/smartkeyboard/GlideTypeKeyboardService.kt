@@ -184,6 +184,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     // Voice Dictation
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
+    private var voiceInsertionPos = -1
+    private var isKeyProcessing = false
 
     // Key preview and touches
     private var activePreviewView: View? = null
@@ -2104,7 +2106,17 @@ hideAiSystemOverlay()
                                 if (keyLongPressed) {
                                     val hintText = getHintForKey(key)
                                     if (hintText != null) {
-                                        currentInputConnection?.commitText(hintText, 1)
+                                        if (isTranslationActive && translationInputField != null) {
+                                            val et = translationInputField!!
+                                            val s = et.selectionStart.coerceAtLeast(0); val e = et.selectionEnd.coerceAtLeast(0)
+                                            et.text.replace(Math.min(s, e), Math.max(s, e), hintText)
+                                        } else if (isAiChatActive && aiInputField != null) {
+                                            val et = aiInputField!!
+                                            val s = et.selectionStart.coerceAtLeast(0); val e = et.selectionEnd.coerceAtLeast(0)
+                                            et.text.replace(Math.min(s, e), Math.max(s, e), hintText)
+                                        } else {
+                                            currentInputConnection?.commitText(hintText, 1)
+                                        }
                                     } else {
                                         handleKeyPress(key)
                                     }
@@ -2178,6 +2190,9 @@ hideAiSystemOverlay()
     }
 
     private fun handleKeyPress(key: String) {
+        if (isKeyProcessing) return
+        isKeyProcessing = true
+        try {
         if (isCtrlActive || isAltActive) {
             val ic = currentInputConnection
             if (ic != null && key.length == 1) {
@@ -2397,6 +2412,7 @@ hideAiSystemOverlay()
                 updateKeyboardLayout()
             }
         }
+    } finally { isKeyProcessing = false }
     }
 
     private fun transformChar(c: Char, font: KeyboardFont): String {
@@ -3392,7 +3408,7 @@ hideAiSystemOverlay()
     }
 
     private fun animateKeyPress(v: View, pressDown: Boolean) {
-        val duration = 80L
+        val duration = if (pressDown) 80L else 200L
         val scale = if (pressDown) 0.92f else 1.0f
         v.animate().scaleX(scale).scaleY(scale).setDuration(duration).start()
     }
@@ -3805,14 +3821,20 @@ hideAiSystemOverlay()
 
     private fun hideAiSystemOverlay() {
         internalEditTextFocused = null
-        aiSystemOverlayView?.let {
-            try {
-                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it)
-            } catch (_: Exception) { }
+        aiSystemOverlayView?.let { view ->
+            view.animate().alpha(0f).setDuration(150).withEndAction {
+                try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) } catch (_: Exception) { }
+                if (aiSystemOverlayView === view) {
+                    aiSystemOverlayView = null
+                    aiSystemOverlayRoot = null
+                    aiOverlayChatContainer = null
+                }
+            }.start()
+        } ?: run {
+            aiSystemOverlayView = null
+            aiSystemOverlayRoot = null
+            aiOverlayChatContainer = null
         }
-        aiSystemOverlayView = null
-        aiSystemOverlayRoot = null
-        aiOverlayChatContainer = null
     }
 
     private var translationOverlayView: View? = null
@@ -3835,8 +3857,6 @@ hideAiSystemOverlay()
             setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
         }
         lateinit var inputEdit: EditText
-        lateinit var translateResultView: TextView
-        var translationResult: String? = null
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -3884,13 +3904,6 @@ hideAiSystemOverlay()
                 translationTargetLang = temp
                 sourceLangBtn.text = translationSourceLang.uppercase()
                 targetLangBtn.text = translationTargetLang.uppercase()
-                val q = inputEdit.text.toString().trim()
-                if (q.isNotEmpty()) {
-                    translateText(q, translationSourceLang, translationTargetLang) { result ->
-                        translateResultView.text = result ?: ""
-                        translationResult = result
-                    }
-                }
             }
         }
         navRow.addView(switchLangBtn)
@@ -3923,11 +3936,10 @@ hideAiSystemOverlay()
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                     translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
                     val query = s?.toString() ?: ""
-                    if (query.isEmpty()) { translateResultView.text = ""; translationResult = null; return }
+                    if (query.isEmpty()) return
                     translationRunnable = Runnable {
                         translateText(query, translationSourceLang, translationTargetLang) { result ->
-                            translateResultView.text = result ?: ""
-                            translationResult = result
+                            if (result != null) currentInputConnection?.commitText(result, 1)
                         }
                     }
                     translationDebounceHandler.postDelayed(translationRunnable!!, 300)
@@ -3945,10 +3957,7 @@ hideAiSystemOverlay()
                     if (icon == R.drawable.ic_mic) { if (isListening) stopVoiceInput() else startVoiceInput() }
                     else {
                         val t = inputEdit.text.toString().trim()
-                        if (t.isNotEmpty()) {
-                            if (translationResult != null) { currentInputConnection?.commitText(translationResult, 1); translationResult = null }
-                            else { translateText(t, translationSourceLang, translationTargetLang) { r -> if (r != null) currentInputConnection?.commitText(r, 1) } }
-                        }
+                        if (t.isNotEmpty()) currentInputConnection?.commitText(t, 1)
                     }
                 }
                 if (icon != 0) {
@@ -3965,14 +3974,6 @@ hideAiSystemOverlay()
             })
         }
         inner.addView(inputRow)
-        translateResultView = TextView(this).apply {
-            text = ""; setTextColor(Color.parseColor("#BBFFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setPadding(dpToPx(4), dpToPx(4), dpToPx(4), 0)
-            maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        inner.addView(translateResultView)
         card.addView(inner)
 
         val root = FrameLayout(this).apply {
@@ -3998,6 +3999,15 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
+        // Drag support
+        var dx = 0f; var dy = 0f
+        root.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> { dx = event.rawX - lp.x; dy = event.rawY - lp.y; true }
+                MotionEvent.ACTION_MOVE -> { lp.x = (event.rawX - dx).toInt(); lp.y = (event.rawY - dy).toInt(); wm.updateViewLayout(root, lp); true }
+                else -> false
+            }
+        }
     }
 
     private fun hideTranslationOverlay() {
@@ -4563,17 +4573,18 @@ RULES:
                             val text = matches[0]
 if (isTranslationActive && translationInputField != null) {
                     val et = translationInputField!!
-                    val start = et.selectionStart.coerceAtLeast(0)
-                    val end = et.selectionEnd.coerceAtLeast(0)
-                    et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                    et.text.replace(pos, et.length(), text)
                 } else if (isAiChatActive && aiInputField != null) {
                     val et = aiInputField!!
-                    et.text.replace(et.selectionStart.coerceAtLeast(0), et.length(), text + " ")
+                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                    et.text.replace(pos, et.length(), text + " ")
                 } else {
                     currentInputConnection?.commitText(text + " ", 1)
                 }
                         }
                         isListening = false
+                        voiceInsertionPos = -1
                         playVoiceBeep(false)
                         updateKeyboardLayout()
                     }
@@ -4583,12 +4594,12 @@ if (isTranslationActive && translationInputField != null) {
                             val text = matches[0]
 if (isTranslationActive && translationInputField != null) {
                     val et = translationInputField!!
-                    val start = et.selectionStart.coerceAtLeast(0)
-                    val end = et.selectionEnd.coerceAtLeast(0)
-                    et.text.replace(Math.min(start, end), Math.max(start, end), text)
+                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                    et.text.replace(pos, et.length(), text)
                 } else if (isAiChatActive && aiInputField != null) {
                     val et = aiInputField!!
-                    et.text.replace(et.selectionStart.coerceAtLeast(0), et.length(), text)
+                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                    et.text.replace(pos, et.length(), text)
                 } else {
                     currentInputConnection?.setComposingText(text, 1)
                 }
@@ -4606,6 +4617,11 @@ if (isTranslationActive && translationInputField != null) {
             if (isTranslationActive) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, translationSourceLang)
             }
+        }
+        voiceInsertionPos = when {
+            isTranslationActive && translationInputField != null -> translationInputField!!.selectionStart.coerceAtLeast(0)
+            isAiChatActive && aiInputField != null -> aiInputField!!.selectionStart.coerceAtLeast(0)
+            else -> -1
         }
         speechRecognizer?.startListening(intent)
         isListening = true
