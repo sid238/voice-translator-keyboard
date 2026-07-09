@@ -2374,6 +2374,7 @@ hideAiSystemOverlay()
         when (key.lowercase()) {
             "shift", "⇧", "⇪" -> {
                 val now = System.currentTimeMillis()
+                if (now - lastShiftPressTime in 0..149) { return }
                 if (now - lastShiftPressTime < 300) {
                     isCapsLock = !isCapsLock
                     isShifted = isCapsLock
@@ -3874,8 +3875,8 @@ hideAiSystemOverlay()
     private var translationOverlayView: View? = null
 
     private fun toggleAmbientEffect() {
-        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
-        val current = prefs.getString("ambient_effect", "none") ?: "none"
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = ambientEffect
         val next = when (current) {
             "none" -> "matrix_rain"
             "matrix_rain" -> "rgb_glow"
@@ -4016,7 +4017,7 @@ hideAiSystemOverlay()
                     vibrateClick()
                     activeTone = if (activeTone == tone.lowercase()) "default" else tone.lowercase()
                     for (v in toneViews) {
-                        val isActive = v.text.lowercase() == activeTone
+                        val isActive = v.text.toString().lowercase() == activeTone
                         v.setTextColor(Color.parseColor(if (isActive) themeAccentColor else "#88FFFFFF"))
                         v.background = createKeyDrawableWithRadius(
                             Color.parseColor(if (isActive) "#334D1CFF" else "#222244"), 6)
