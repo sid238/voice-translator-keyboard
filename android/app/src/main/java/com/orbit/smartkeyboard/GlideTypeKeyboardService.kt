@@ -129,6 +129,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // Effects & Timeline & OCR settings
     private var keyboardEffect = "none"
+    private var ambientEffect = "none"
     private var keyboardEffectsView: KeyboardEffectsView? = null
     private var clipboardTimelineEnabled = false
     private var activeKeyboardArea: FrameLayout? = null
@@ -185,7 +186,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
     private var voiceInsertionPos = -1
-    private var isKeyProcessing = 0
 
     // Key preview and touches
     private var activePreviewView: View? = null
@@ -492,6 +492,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
+        ambientEffect = prefs.getString("ambient_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
 
         val ocrImagePath = prefs.getString("ocr_image_path", null)
@@ -1020,7 +1021,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val bufferEdit = EditText(this).apply {
                 landscapeBufferField = this
                 showSoftInputOnFocus = false
-                if (landscapeBufferText != null) setText(landscapeBufferText)
+                val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
+                if (existingText != null) setText(existingText)
+                selectionStart = length
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -1081,9 +1084,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             ViewMode.OCR -> createOcrLayout()
         }
         // Ambient background effect in key gaps
-        if (keyboardEffect in listOf("matrix_rain", "rgb_glow")) {
+        if (ambientEffect in listOf("matrix_rain", "rgb_glow")) {
             val bgEffectView = KeyboardEffectsView(this).apply {
-                setEffectType(keyboardEffect)
+                setEffectType(ambientEffect)
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -2204,9 +2207,6 @@ hideAiSystemOverlay()
     }
 
     private fun handleKeyPress(key: String) {
-        if (isKeyProcessing > 2) return
-        isKeyProcessing++
-        try {
         if (isCtrlActive || isAltActive) {
             val ic = currentInputConnection
             if (ic != null && key.length == 1) {
@@ -2423,10 +2423,8 @@ hideAiSystemOverlay()
                 }
                 wasLastKeySpace = false
                 updateShiftStateBasedOnContext()
-                updateKeyboardLayout()
             }
         }
-    } finally { isKeyProcessing-- }
     }
 
     private fun transformChar(c: Char, font: KeyboardFont): String {
@@ -3864,18 +3862,11 @@ hideAiSystemOverlay()
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             elevation = dpToPx(16).toFloat()
             alpha = 0f; animate().alpha(1f).setDuration(220).start()
-            setOnClickListener { }
         }
         val inner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
         }
-        // Drag handle bar at the top
-        val dragHandle = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(8))
-            background = createKeyDrawableWithRadius(Color.parseColor("#33FFFFFF"), dpToPx(2))
-        }
-        inner.addView(dragHandle)
         lateinit var inputEdit: EditText
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
@@ -4019,19 +4010,37 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
-        // Drag handle
-        var dragDx = 0f; var dragDy = 0f
-        var dragging = false
-        dragHandle.setOnTouchListener { _, event ->
+        // Long-press anywhere to drag
+        var dragStartX = 0f; var dragStartY = 0f
+        var dragOffsetX = 0f; var dragOffsetY = 0f
+        var dragActive = false
+        var longPressFired = false
+        val dragLongPress = Runnable { longPressFired = true }
+        card.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> { dragDx = event.rawX - lp.x; dragDy = event.rawY - lp.y; dragging = false; true }
-                MotionEvent.ACTION_MOVE -> {
-                    val newX = (event.rawX - dragDx).toInt(); val newY = (event.rawY - dragDy).toInt()
-                    if (Math.abs(newX - lp.x) > 5 || Math.abs(newY - lp.y) > 5) dragging = true
-                    lp.x = newX; lp.y = newY; wm.updateViewLayout(root, lp); true
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartX = event.rawX; dragStartY = event.rawY
+                    dragOffsetX = event.rawX - lp.x; dragOffsetY = event.rawY - lp.y
+                    dragActive = false; longPressFired = false
+                    handler.postDelayed(dragLongPress, 250)
+                    false
                 }
-                MotionEvent.ACTION_UP -> { dragging = false; true }
-                MotionEvent.ACTION_CANCEL -> { dragging = false; true }
+                MotionEvent.ACTION_MOVE -> {
+                    if (longPressFired) {
+                        dragActive = true
+                        lp.x = (event.rawX - dragOffsetX).toInt(); lp.y = (event.rawY - dragOffsetY).toInt()
+                        wm.updateViewLayout(root, lp)
+                        true
+                    } else if (Math.abs(event.rawX - dragStartX) > 10 || Math.abs(event.rawY - dragStartY) > 10) {
+                        handler.removeCallbacks(dragLongPress)
+                        false
+                    } else false
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(dragLongPress)
+                    if (dragActive) { dragActive = false; longPressFired = false; true }
+                    else false
+                }
                 else -> false
             }
         }
