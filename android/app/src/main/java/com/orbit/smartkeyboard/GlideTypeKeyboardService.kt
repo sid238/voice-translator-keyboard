@@ -1023,7 +1023,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 showSoftInputOnFocus = false
                 val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
                 if (existingText != null) setText(existingText)
-                selectionStart = length
+                setSelection(existingText?.length ?: 0)
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
