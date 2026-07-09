@@ -366,6 +366,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             currentViewMode = ViewMode.QWERTY
             isTranslationActive = false
             isAiChatActive = false
+            hideTranslationOverlay()
         }
         isWaitingForOcrGallery = false
         isHindiPage2 = false
@@ -380,6 +381,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         super.onFinishInputView(finishingInput)
         stopOcrCamera()
         hideAiSystemOverlay()
+        hideTranslationOverlay()
+        isTranslationActive = false
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
@@ -994,7 +997,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
 
         if (isTranslationActive) {
-            mainLayout.addView(createTranslationBar())
+            // handled via system overlay
         }
         if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
@@ -1042,8 +1045,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     if (text.isNotEmpty()) {
                         currentInputConnection?.commitText(text, 1)
                     }
-                    // Keep landscapeBufferText so user can edit again when reopening
-                    if (landscapeBufferText == null) landscapeBufferText = text
+                    landscapeBufferText = null
                     requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -2257,7 +2259,13 @@ hideAiSystemOverlay()
             val selEnd = et.selectionEnd.coerceAtLeast(0)
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    if (et.length() > 0) et.text.delete(et.length() - 1, et.length())
+                    val s = et.selectionStart.coerceAtLeast(0)
+                    val e = et.selectionEnd.coerceAtLeast(0)
+                    if (e > s) {
+                        et.text.delete(s, e)
+                    } else if (s > 0) {
+                        et.text.delete(s - 1, s)
+                    }
                 }
                 "enter", "↵" -> { }
                 "spacebar", " ", "␣" -> et.text.replace(selStart, selEnd, " ")
@@ -3812,16 +3820,57 @@ hideAiSystemOverlay()
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(6))
         }
-        // Nav row
+        // Nav row with language selection
         val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(28))
         }
-        navRow.addView(TextView(this).apply {
-            text = "Translate"; setTextColor(Color.parseColor("#7C4DFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
+        val sourceLangBtn = TextView(this).apply {
+            text = translationSourceLang.uppercase()
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
+            setOnClickListener {
+                vibrateClick()
+                showLanguageMenu(this, true)
+            }
+        }
+        navRow.addView(sourceLangBtn)
+        val switchLangBtn = TextView(this).apply {
+            text = "⇄"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(4), 0, dpToPx(4), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(24))
+            setOnClickListener {
+                vibrateClick()
+                val temp = translationSourceLang
+                translationSourceLang = translationTargetLang
+                translationTargetLang = temp
+                sourceLangBtn.text = translationSourceLang.uppercase()
+                targetLangBtn.text = translationTargetLang.uppercase()
+            }
+        }
+        navRow.addView(switchLangBtn)
+        val targetLangBtn = TextView(this).apply {
+            text = translationTargetLang.uppercase()
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
+            setOnClickListener {
+                vibrateClick()
+                showLanguageMenu(this, false)
+            }
+        }
+        navRow.addView(targetLangBtn)
+        navRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         navRow.addView(FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
             isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22))
@@ -4141,7 +4190,7 @@ hideAiSystemOverlay()
             }
         }
         val respScroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(120))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(150))
             isFillViewport = true
         }
         respScroll.addView(TextView(this).apply {
