@@ -280,12 +280,17 @@ class KeyboardEffectsView @JvmOverloads constructor(
 
     // --- RGB GLOW ---
     private class RgbGlow(
-        val x: Float,
-        val y: Float,
+        var x: Float,
+        var y: Float,
         val keyWidth: Int,
         val keyHeight: Int,
         var scale: Float,
-        var alpha: Int
+        var alpha: Int,
+        val phase: Float = 0f,
+        val speedX: Float = 0f,
+        val speedY: Float = 0f,
+        var originX: Float = 0f,
+        var originY: Float = 0f
     )
 
     private fun spawnRgbGlow(x: Float, y: Float, width: Int, height: Int) {
@@ -608,10 +613,22 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 }
                 "rgb_glow" -> {
                     if (rgbGlows.isEmpty()) {
-                        val segW = width / 3; val segH = height / 4
-                        for (r in 0 until 4) for (c in 0 until 3) {
+                        val cols = 8; val rows = 5
+                        val segW = width / cols; val segH = height / rows
+                        for (r in 0 until rows) for (c in 0 until cols) {
                             val cx = segW * c + segW / 2f; val cy = segH * r + segH / 2f
-                            rgbGlows.add(RgbGlow(cx, cy, segW, segH, 1.0f, 60 + random.nextInt(80)))
+                            val phase = Math.PI.toFloat() * 2 * (r * cols + c) / (rows * cols)
+                            rgbGlows.add(RgbGlow(cx, cy, segW, segH, 1.0f, 100 + random.nextInt(80),
+                                phase, (random.nextFloat() - 0.5f) * 0.5f, (random.nextFloat() - 0.5f) * 0.5f, cx, cy))
+                        }
+                    } else {
+                        val time = System.currentTimeMillis() / 1000f
+                        for (g in rgbGlows) {
+                            val wave = sin(time * 1.2f + g.phase) * 8f
+                            g.x = g.originX + wave * g.speedX * 10f + cos(time * 0.8f + g.phase * 1.5f) * 6f
+                            g.y = g.originY + wave * g.speedY * 10f + sin(time * 1.0f + g.phase * 0.7f) * 6f
+                            g.alpha = (120 + 80 * (sin(time * 1.5f + g.phase) * 0.5f + 0.5f)).toInt().coerceIn(40, 200)
+                            g.scale = 1.2f + 0.6f * (sin(time * 0.6f + g.phase * 0.8f) * 0.5f + 0.5f)
                         }
                     }
                 }

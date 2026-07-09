@@ -179,7 +179,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var aiInputField: EditText? = null
     private var landscapeBufferField: EditText? = null
     private var landscapeBufferText: String? = null
-    private var landscapeBufferCommitted = false
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -1022,12 +1021,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val bufferEdit = EditText(this).apply {
                 landscapeBufferField = this
                 showSoftInputOnFocus = false
-                if (!landscapeBufferCommitted) {
-                    val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
-                    if (existingText != null) setText(existingText)
-                    setSelection(existingText?.length ?: 0)
-                }
-                landscapeBufferCommitted = false
+                val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
+                if (existingText != null) setText(existingText)
+                setSelection(existingText?.length ?: 0)
                 hint = "Type here, press OK to send"
                 setHintTextColor(Color.parseColor("#66FFFFFF"))
                 setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -1050,12 +1046,20 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 isClickable = true
                 layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
                 setOnClickListener {
-                    val text = bufferEdit.text.toString()
-                    if (text.isNotEmpty()) {
-                        currentInputConnection?.commitText(text, 1)
+                    val ic = currentInputConnection
+                    if (text.isNotEmpty() && ic != null) {
+                        val currentText = ic.getTextBeforeCursor(2000, 0)?.toString()
+                        var prefixLen = 0
+                        if (currentText != null) {
+                            val bufText = landscapeBufferText
+                            if (bufText != null && currentText.endsWith(bufText)) prefixLen = bufText.length
+                        }
+                        ic.beginBatchEdit()
+                        if (prefixLen > 0) ic.deleteSurroundingText(prefixLen, 0)
+                        ic.commitText(text, 1)
+                        ic.endBatchEdit()
                     }
                     landscapeBufferText = null
-                    landscapeBufferCommitted = true
                     requestHideSelf(0)
                 }
                 addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -2372,17 +2376,12 @@ hideAiSystemOverlay()
         when (key.lowercase()) {
             "shift", "⇧", "⇪" -> {
                 val now = System.currentTimeMillis()
-                if (now - lastShiftPressTime in 0..149) { return }
                 if (now - lastShiftPressTime < 300) {
-                    isCapsLock = !isCapsLock
-                    isShifted = isCapsLock
+                    isCapsLock = true
+                    isShifted = true
                 } else {
-                    if (isCapsLock) {
-                        isCapsLock = false
-                        isShifted = false
-                    } else {
-                        isShifted = !isShifted
-                    }
+                    isShifted = !isShifted
+                    isCapsLock = false
                 }
                 lastShiftPressTime = now
                 updateKeyboardLayout()
@@ -3917,12 +3916,13 @@ hideAiSystemOverlay()
         lateinit var copyBtn: FrameLayout
         lateinit var insertBtn: FrameLayout
         var activeTone = "default"
-        // Header: hold & move
-        inner.addView(TextView(this).apply {
+        // Header: hold & move (drag handle)
+        val dragHandle = TextView(this).apply {
             text = "⠿ hold & move"; setTextColor(Color.parseColor("#66FFFFFF"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f); gravity = Gravity.CENTER_HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(16))
-        })
+        }
+        inner.addView(dragHandle)
         // Nav row with language selection
         val navRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -4142,37 +4142,16 @@ hideAiSystemOverlay()
         }
         wm.addView(root, lp)
         translationOverlayView = root
-        // Long-press anywhere to drag
-        var dragStartX = 0f; var dragStartY = 0f
-        var dragOffsetX = 0f; var dragOffsetY = 0f
-        var dragActive = false
-        var longPressFired = false
-        val dragLongPress = Runnable { longPressFired = true }
-        card.setOnTouchListener { _, event ->
+        // Drag via header handle
+        var dragDx = 0f; var dragDy = 0f
+        dragHandle.setOnTouchListener { _, event ->
             when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    dragStartX = event.rawX; dragStartY = event.rawY
-                    dragOffsetX = event.rawX - lp.x; dragOffsetY = event.rawY - lp.y
-                    dragActive = false; longPressFired = false
-                    handler.postDelayed(dragLongPress, 250)
-                    false
-                }
+                MotionEvent.ACTION_DOWN -> { dragDx = event.rawX - lp.x; dragDy = event.rawY - lp.y; true }
                 MotionEvent.ACTION_MOVE -> {
-                    if (longPressFired) {
-                        dragActive = true
-                        lp.x = (event.rawX - dragOffsetX).toInt(); lp.y = (event.rawY - dragOffsetY).toInt()
-                        wm.updateViewLayout(root, lp)
-                        true
-                    } else if (Math.abs(event.rawX - dragStartX) > 10 || Math.abs(event.rawY - dragStartY) > 10) {
-                        handler.removeCallbacks(dragLongPress)
-                        false
-                    } else false
+                    lp.x = (event.rawX - dragDx).toInt(); lp.y = (event.rawY - dragDy).toInt()
+                    wm.updateViewLayout(root, lp); true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(dragLongPress)
-                    if (dragActive) { dragActive = false; longPressFired = false; true }
-                    else false
-                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { true }
                 else -> false
             }
         }
