@@ -168,6 +168,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // AI Chat fields
     private var isAiChatActive = false
+    private var aiSystemOverlayView: View? = null
+    private var aiSystemOverlayRoot: FrameLayout? = null
     private var currentAiResponse: String? = null
     private var isAiLoading = false
     private var aiInputField: EditText? = null
@@ -374,6 +376,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         stopOcrCamera()
+        hideAiSystemOverlay()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
@@ -1001,9 +1004,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         mainLayout.addView(keyboardArea)
         keyboardContainer.addView(mainLayout)
-        if (isAiChatActive) {
-            keyboardContainer.addView(createAiChatOverlay())
-        }
         } catch (e: Exception) {
             android.util.Log.e("Keyboard", "Layout error", e)
         }
@@ -1461,7 +1461,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createAiGradientButton(): View {
         val online = isNetworkAvailable()
-        val canOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) android.provider.Settings.canDrawOverlays(this) else true
         return FrameLayout(this).apply {
             background = createKeyDrawable(Color.parseColor(
                 if (!online) "#33111111"
@@ -1476,15 +1475,25 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
             setOnClickListener {
                 if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !canOverlay) {
-                    Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for popup", Toast.LENGTH_LONG).show()
-                    val intent = android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION
-                    startActivity(Intent(intent).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                    return@setOnClickListener
-                }
                 vibrateClick()
                 isAiChatActive = !isAiChatActive
-                if (isAiChatActive) isTranslationActive = false
+                if (isAiChatActive) {
+                    isTranslationActive = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isNetworkAvailable()) {
+                        isAiChatActive = false; updateKeyboardLayout()
+                        Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this@GlideTypeKeyboardService)) {
+                        Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for AI popup", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                        isAiChatActive = false; updateKeyboardLayout()
+                        return@setOnClickListener
+                    }
+                    showAiSystemOverlay()
+                } else {
+                    hideAiSystemOverlay()
+                }
                 updateKeyboardLayout()
             }
             addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -2147,7 +2156,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         // Route to internal EditText (AI input, etc.) when focused
-        val intFocused = internalEditTextFocused
+        val intFocused = internalEditTextFocused ?: if (isAiChatActive) aiInputField else null
         if (intFocused != null && intFocused !== translationInputField) {
             val et = intFocused
             val start = et.selectionStart.coerceAtLeast(0)
@@ -3405,36 +3414,27 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
 
 
-    private fun createAiChatOverlay(): View {
-        val overlay = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-            setBackgroundColor(Color.parseColor("#66000000"))
-            isClickable = true
-            isFocusable = true
-            alpha = 0f
-            setOnClickListener { vibrateClick(); isAiChatActive = false; updateKeyboardLayout() }
-            animate().alpha(1f).setDuration(200).start()
-        }
+    private fun showAiSystemOverlay() {
+        hideAiSystemOverlay()
+        val screenWidth = resources.displayMetrics.widthPixels
+        val cardHeight = dpToPx(240)
+        val topMargin = dpToPx(8)
+
         val card = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(200)).apply {
-                gravity = Gravity.TOP
-                setMargins(dpToPx(8), dpToPx(4), dpToPx(8), 0)
-            }
-            elevation = dpToPx(12).toFloat()
-            translationY = -dpToPx(220).toFloat()
+            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cardHeight)
+            elevation = dpToPx(16).toFloat()
             background = GradientDrawable().apply {
                 cornerRadius = dpToPx(22).toFloat()
-                setColor(Color.parseColor("#E8161820"))
+                setColor(Color.parseColor("#F0161820"))
             }
             setOnClickListener { }
-            animate().translationY(0f).setDuration(250).start()
+            alpha = 0f
+            animate().alpha(1f).setDuration(220).start()
         }
         val inner = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(8))
         }
-
-        // Header: Orbit AI + pin/expand/close
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(30))
@@ -3451,30 +3451,19 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF33"), 4)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(18)).apply { setMargins(0, 0, dpToPx(4), 0) }
         })
-        for ((icon, col, lbl) in listOf(
-            Triple(R.drawable.ic_pin, "#FFFFFF", "Pin"),
-            Triple(R.drawable.ic_expand, "#FFFFFF", "Expand"),
-            Triple(R.drawable.ic_close, "#FFFFFF", "Close")
-        )) {
-            header.addView(FrameLayout(this).apply {
-                background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-                isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(3), 0) }
-                setOnClickListener { vibrateClick()
-                    if (lbl == "Close") { isAiChatActive = false; updateKeyboardLayout() }
-                    else Toast.makeText(this@GlideTypeKeyboardService, lbl, Toast.LENGTH_SHORT).show()
-                }
-                addView(ImageView(this@GlideTypeKeyboardService).apply {
-                    setImageResource(icon); setColorFilter(Color.parseColor(col))
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply { gravity = Gravity.CENTER }
-                })
+        header.addView(FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
+            setOnClickListener { vibrateClick(); isAiChatActive = false; hideAiSystemOverlay(); updateKeyboardLayout() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(R.drawable.ic_close); setColorFilter(Color.WHITE)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply { gravity = Gravity.CENTER }
             })
-        }
+        })
         inner.addView(header)
 
-        // Response area (scrollable, 0 height = fill remaining space)
         val respScroll = ScrollView(this).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            isFillViewport = false
         }
         respScroll.addView(TextView(this).apply {
             val resp = currentAiResponse ?: "Ask anything..."
@@ -3487,7 +3476,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         })
         inner.addView(respScroll)
 
-        // Input row
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dpToPx(4), 0, 0)
@@ -3505,20 +3493,22 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             post { requestFocus() }
         }
         inputRow.addView(inputEdit)
-
         for ((icon, col, act) in listOf(
-            Triple(R.drawable.ic_gallery, "#AAAAAA") { Toast.makeText(this@GlideTypeKeyboardService, "Attach", Toast.LENGTH_SHORT).show() },
             Triple(R.drawable.ic_mic, "#AAAAAA") { if (isListening) stopVoiceInput() else startVoiceInput() },
             Triple(0, "#7C4DFF") {
                 val msg = inputEdit.text.toString().trim()
                 if (msg.isNotEmpty()) {
                     inputEdit.setText("")
                     aiChatMessages.add(true to msg)
-                    currentAiResponse = null; isAiLoading = true; updateKeyboardLayout()
+                    currentAiResponse = null; isAiLoading = true
                     aiAssist("Chat", msg) { result ->
                         val response = result ?: "Sorry, I couldn't process that."
                         aiChatMessages.add(false to response)
-                        currentAiResponse = response; isAiLoading = false; updateKeyboardLayout()
+                        currentAiResponse = response; isAiLoading = false
+                        // Refresh the overlay text
+                        if (respScroll.getChildAt(0) is TextView) {
+                            (respScroll.getChildAt(0) as TextView).text = formatMarkdown(response)
+                        }
                     }
                 }
             }
@@ -3543,8 +3533,40 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
         inner.addView(inputRow)
         card.addView(inner)
-        overlay.addView(card)
-        return overlay
+
+        val root = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(screenWidth - dpToPx(16), ViewGroup.LayoutParams.WRAP_CONTENT)
+            setPadding(dpToPx(8), topMargin, dpToPx(8), 0)
+        }
+        root.addView(card)
+
+        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val lp = WindowManager.LayoutParams(
+            screenWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            android.graphics.PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            token = keyboardContainer.windowToken
+        }
+        wm.addView(root, lp)
+        aiSystemOverlayView = root
+        aiSystemOverlayRoot = root
+    }
+
+    private fun hideAiSystemOverlay() {
+        aiSystemOverlayView?.let {
+            try {
+                (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it)
+            } catch (_: Exception) { }
+        }
+        aiSystemOverlayView = null
+        aiSystemOverlayRoot = null
     }
 
     private fun formatMarkdown(text: String): android.text.SpannableStringBuilder {
