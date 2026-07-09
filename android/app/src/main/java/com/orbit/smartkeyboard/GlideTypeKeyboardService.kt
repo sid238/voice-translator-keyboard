@@ -2136,19 +2136,16 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val oldShifted = isShifted
         val ic = currentInputConnection
         if (ic == null) {
-            isShifted = wasLastKeySpace
+            isShifted = true
         } else {
-            val textBefore = ic.getTextBeforeCursor(2, 0)
-            if (textBefore == null || textBefore.isEmpty()) {
-                isShifted = wasLastKeySpace
+            val textBefore = ic.getTextBeforeCursor(2, 0)?.toString() ?: ""
+            if (textBefore.isEmpty()) {
+                isShifted = true
             } else {
-                val str = textBefore.toString()
-                if (str.endsWith(" ") || str.endsWith("\n")) {
-                    isShifted = true
-                } else {
-                    if (isShifted && !isCapsLock) {
-                        isShifted = false
-                    }
+                val prev = textBefore.last()
+                isShifted = prev == ' ' || prev == '\n' || prev == '.' || prev == '?' || prev == '!'
+                if (!isShifted && !isCapsLock) {
+                    isShifted = false
                 }
             }
         }
@@ -2246,6 +2243,30 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         // Route to internal EditText (AI input, etc.) when focused
+        val aiEdit = aiInputField
+        if (isAiChatActive && aiEdit != null && key !in listOf("?123", "1/2", "2/2", "abc", "emoji")) {
+            val et = aiEdit
+            val selStart = et.selectionStart.coerceAtLeast(0)
+            val selEnd = et.selectionEnd.coerceAtLeast(0)
+            when (key.lowercase()) {
+                "back", "⌫" -> {
+                    if (selEnd > selStart) {
+                        et.text.delete(selStart, selEnd)
+                    } else if (selStart > 0) {
+                        et.text.delete(selStart - 1, selStart)
+                    }
+                }
+                "enter", "↵" -> { }
+                "spacebar", " ", "␣" -> et.text.replace(selStart, selEnd, " ")
+                "shift", "⇧", "⇪" -> { }
+                else -> {
+                    if (key.length == 1) et.text.replace(selStart, selEnd, key)
+                }
+            }
+            wasLastKeySpace = key == "spacebar" || key == " " || key == "␣"
+            if (isShifted && !isCapsLock) isShifted = false
+            return
+        }
         val intFocused = internalEditTextFocused
         if (intFocused != null && intFocused !== translationInputField) {
             val et = intFocused
@@ -3506,6 +3527,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createChatBubble(isUser: Boolean, text: String): View {
+        val bubbleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = if (isUser) Gravity.END else Gravity.START
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
         val bubble = TextView(this).apply {
             this.text = if (!isUser) formatMarkdown(text) else text
             setTextColor(if (isUser) Color.WHITE else Color.parseColor("#E0E0E0"))
@@ -3520,23 +3546,40 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, dpToPx(3), 0, dpToPx(3))
-                if (isUser) {
-                    gravity = Gravity.END
-                    minimumWidth = dpToPx(60)
-                    rightMargin = dpToPx(8)
-                } else {
-                    minimumWidth = dpToPx(80)
-                    leftMargin = dpToPx(4)
-                }
-            }
-            setOnLongClickListener {
-                currentInputConnection?.commitText(text, 1)
-                Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
-                true
+                setMargins(if (isUser) dpToPx(20) else dpToPx(4), dpToPx(3), dpToPx(4), dpToPx(3))
+                minimumWidth = dpToPx(60)
             }
         }
-        return bubble
+        if (!isUser) {
+            bubbleRow.addView(bubble)
+            val btnRow = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dpToPx(2), 0, 0, 0)
+            }
+            for ((icon, col, action) in listOf(
+                Triple("📋", "#AAAAAA") { Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show()
+                    val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clip.setPrimaryClip(ClipData.newPlainText("AI Response", text))
+                },
+                Triple("➤", "#7C4DFF") { currentInputConnection?.commitText(text, 1) }
+            )) {
+                btnRow.addView(FrameLayout(this).apply {
+                    background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 4)
+                    isClickable = true
+                    layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22)).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
+                    setOnClickListener { vibrateClick(); action() }
+                    addView(TextView(this@GlideTypeKeyboardService).apply {
+                        text = icon; setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+                        layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
+                    })
+                })
+            }
+            bubbleRow.addView(btnRow)
+        } else {
+            bubbleRow.addView(bubble, 0)
+        }
+        return bubbleRow
     }
 
     private fun showAiSystemOverlay() {
@@ -3634,7 +3677,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     aiOverlayChatContainer?.addView(createChatBubble(true, msg))
                     aiOverlayChatContainer?.let { c ->
                         val placeholder = TextView(this@GlideTypeKeyboardService).apply {
-                            text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
+                            this.text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
                             setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
                             tag = "aiTyping"
