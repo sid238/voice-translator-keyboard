@@ -1096,11 +1096,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
-                post {
-                    setAmbient(true, width.coerceAtLeast(1), height.coerceAtLeast(1))
-                }
             }
             keyboardArea.addView(bgEffectView, 0)
+            bgEffectView.post { bgEffectView.setAmbient(true, bgEffectView.width.coerceAtLeast(1), bgEffectView.height.coerceAtLeast(1)) }
         }
         keyboardArea.addView(keysLayout)
 
@@ -3299,7 +3297,18 @@ hideAiSystemOverlay()
                         elevation = dpToPx(1).toFloat()
                         // Tap to insert
                         setOnClickListener { vibrateClick()
-                            if (isImage) pasteClipboardImage(item) else currentInputConnection?.commitText(txt, 1)
+                            if (isImage) pasteClipboardImage(item) else {
+                                val target = if (isTranslationActive && translationInputField != null) translationInputField
+                                    else if (isAiChatActive && aiInputField != null) aiInputField
+                                    else null
+                                if (target != null) {
+                                    val selStart = target.selectionStart.coerceAtLeast(0)
+                                    val selEnd = target.selectionEnd.coerceAtLeast(0)
+                                    target.text.replace(Math.min(selStart, selEnd), Math.max(selStart, selEnd), txt)
+                                } else {
+                                    currentInputConnection?.commitText(txt, 1)
+                                }
+                            }
                         }
                         // Swipe right → Pin, Swipe left → Delete
                         val gestureDetector = GestureDetector(this@GlideTypeKeyboardService, object : GestureDetector.SimpleOnGestureListener() {
@@ -4003,7 +4012,7 @@ hideAiSystemOverlay()
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(26)).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
         }
-        val tones = listOf("Zen", "Casual", "Formal", "Poetic", "Witty")
+        val tones = listOf("Casual", "Formal", "Poetic", "Witty")
         val toneViews = mutableListOf<TextView>()
         for (tone in tones) {
             val tv = TextView(this).apply {
@@ -4042,10 +4051,20 @@ hideAiSystemOverlay()
                 val t = inputEdit.text.toString().trim()
                 if (t.isEmpty()) return@setOnClickListener
                 previewView.text = "Translating..."; previewView.visibility = View.VISIBLE
-                val query = if (activeTone != "default") "($activeTone tone) $t" else t
-                translateText(query, translationSourceLang, translationTargetLang) { result ->
-                    previewView.text = result ?: "Translation failed"
-                    previewView.visibility = View.VISIBLE
+                translateText(t, translationSourceLang, translationTargetLang) { translation ->
+                    if (translation == null) {
+                        previewView.text = "Translation failed"; return@translateText
+                    }
+                    if (activeTone != "default") {
+                        previewView.text = "Applying $activeTone tone..."
+                        aiRewriteText(translation, activeTone) { rewritten ->
+                            previewView.text = rewritten ?: translation
+                            previewView.visibility = View.VISIBLE
+                        }
+                    } else {
+                        previewView.text = translation
+                        previewView.visibility = View.VISIBLE
+                    }
                 }
             }
             addView(TextView(this@GlideTypeKeyboardService).apply {
@@ -4603,6 +4622,64 @@ RULES:
         popup.show()
     }
 
+    private fun aiRewriteText(text: String, tone: String, callback: (String?) -> Unit) {
+        Thread {
+            var conn: HttpURLConnection? = null
+            try {
+                val messages = org.json.JSONArray()
+                messages.put(org.json.JSONObject().apply {
+                    put("role", "system")
+                    put("content", """You are a tone rewriting assistant. Rewrite the given text in a $tone tone.
+Preserve the original meaning and all factual information.
+Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
+                })
+                messages.put(org.json.JSONObject().apply {
+                    put("role", "user")
+                    put("content", text)
+                })
+                val requestBody = org.json.JSONObject().apply {
+                    put("messages", messages)
+                    put("stream", false)
+                }
+                val url = URL("https://yenus.created.app/integrations/google-gemini-1-5-flash")
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("accept", "*/*")
+                conn.setRequestProperty("origin", "https://yenus.created.app")
+                conn.setRequestProperty("referer", "https://yenus.created.app/")
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36")
+                conn.setRequestProperty("x-createxyz-project-id", "31b1368e-b142-4030-bef4-1a10d86e4873")
+                conn.doOutput = true
+                conn.connectTimeout = 30000
+                conn.readTimeout = 30000
+                conn.outputStream.use { os ->
+                    os.write(requestBody.toString().toByteArray(Charsets.UTF_8))
+                }
+                val responseCode = conn.responseCode
+                val response = if (responseCode == 200) {
+                    conn.inputStream.use { inputStream ->
+                        java.io.BufferedReader(java.io.InputStreamReader(inputStream, "UTF-8")).use { reader ->
+                            reader.readText()
+                        }
+                    }
+                } else { handler.post { callback(null) }; return@Thread }
+                try {
+                    val json = org.json.JSONObject(response)
+                    val result = json.optString("result", json.optString("response", json.optString("text", json.optString("content", json.toString()))))
+                    handler.post { callback(result.trim()) }
+                } catch (e: Exception) {
+                    handler.post { callback(null) }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                handler.post { callback(null) }
+            } finally {
+                conn?.disconnect()
+            }
+        }.start()
+    }
+
     private fun translateText(text: String, sourceLang: String, targetLang: String, callback: (String?) -> Unit) {
         Thread {
             var conn: HttpURLConnection? = null
@@ -4738,6 +4815,7 @@ if (isTranslationActive && translationInputField != null) {
                         updateKeyboardLayout()
                     }
                     override fun onPartialResults(partialResults: android.os.Bundle?) {
+                        if (!isListening) return
                         val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
                             val text = matches[0]
@@ -4763,6 +4841,8 @@ if (isTranslationActive && translationInputField != null) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000)
             if (isTranslationActive) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, translationSourceLang)
             }
