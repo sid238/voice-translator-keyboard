@@ -389,6 +389,14 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
     }
 
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        hideAiSystemOverlay()
+        hideTranslationOverlay()
+        isTranslationActive = false
+        isAiChatActive = false
+    }
+
     override fun onUpdateSelection(
         oldSelStart: Int, oldSelEnd: Int,
         newSelStart: Int, newSelEnd: Int,
@@ -3859,14 +3867,12 @@ hideAiSystemOverlay()
     private fun hideAiSystemOverlay() {
         internalEditTextFocused = null
         aiSystemOverlayView?.let { view ->
-            view.animate().alpha(0f).setDuration(150).withEndAction {
-                try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) } catch (_: Exception) { }
-                if (aiSystemOverlayView === view) {
-                    aiSystemOverlayView = null
-                    aiSystemOverlayRoot = null
-                    aiOverlayChatContainer = null
-                }
-            }.start()
+            try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) } catch (_: Exception) { }
+            if (aiSystemOverlayView === view) {
+                aiSystemOverlayView = null
+                aiSystemOverlayRoot = null
+                aiOverlayChatContainer = null
+            }
         } ?: run {
             aiSystemOverlayView = null
             aiSystemOverlayRoot = null

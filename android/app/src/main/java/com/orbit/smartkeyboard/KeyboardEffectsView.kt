@@ -101,7 +101,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
             isPressed = true; pressEffectActive = true
             if (effectType == "matrix_rain") matrixRainBg(w, h)
-            else if (effectType == "rgb_glow") { snakeWave = SnakeWave(0f, 6f, true, random.nextFloat() * 360f) }
+            else if (effectType == "rgb_glow") { snakeWave = SnakeWave(0f, 4f, true, random.nextFloat() * 360f) }
             postInvalidateOnAnimation()
         } else {
             clearAll(); postInvalidate()
@@ -113,9 +113,9 @@ class KeyboardEffectsView @JvmOverloads constructor(
         for (i in 0 until (w / 10).coerceAtLeast(16)) {
             val x = random.nextFloat() * w
             val y = random.nextFloat() * h * -1
-            val speed = 6f + random.nextFloat() * 12f
+            val speed = 2f + random.nextFloat() * 4f
             val chars = mutableListOf<String>()
-            for (j in 0..18) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
+            for (j in 0..14) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
             matrixStreams.add(MatrixStream(x, y, speed, chars, 0, 200 + random.nextInt(56)))
         }
     }
@@ -233,9 +233,9 @@ class KeyboardEffectsView @JvmOverloads constructor(
         for (i in 0..2) {
             val streamX = (x - keyWidth / 2) + random.nextFloat() * keyWidth
             val streamY = y - keyHeight / 2
-            val speed = 8f + random.nextFloat() * 12f
+            val speed = 3f + random.nextFloat() * 5f
             val charsList = mutableListOf<String>()
-            for (j in 0..15) {
+            for (j in 0..12) {
                 charsList.add(matrixChars[random.nextInt(matrixChars.length)].toString())
             }
             matrixStreams.add(MatrixStream(streamX, streamY, speed, charsList, 0, 255))
@@ -461,7 +461,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             while (iterator.hasNext()) {
                 val s = iterator.next()
                 s.y += s.speed
-                s.alpha -= 2
+                s.alpha -= 1
                 if (s.alpha <= 0 || s.y > height) {
                     iterator.remove()
                     continue
@@ -560,7 +560,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
             }
         }
 
-        // 7. Draw Snake Wave RGB (ambient key illumination)
+        // 7. Draw Snake Wave RGB (ambient gaming keyboard style)
         val sw = snakeWave
         if (ambientMode && sw != null && sw.active) {
             needsRedraw = true
@@ -578,26 +578,30 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     var dist = sw.position - cellIndex
                     dist = ((dist % totalCells) + totalCells) % totalCells
                     if (dist > totalCells * 0.5f) dist = totalCells - dist
-                    val intensity = (1f - (dist / 3f).coerceIn(0f, 1f)).toDouble()
-                    val alpha = (intensity * intensity * 220).toInt().coerceIn(0, 220)
-                    if (alpha < 8) continue
+                    val intensity = (1f - (dist / 3.5f).coerceIn(0f, 1f)).toDouble()
+                    val alpha = (intensity * intensity * 255).toInt().coerceIn(0, 255)
+                    if (alpha < 10) continue
 
-                    val cellHue = (hue + dist * 30f) % 360f
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 5f
-                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.9f, 1f))
-                    paint.maskFilter = BlurMaskFilter(8f, BlurMaskFilter.Blur.OUTER)
+                    val cellHue = (hue + dist * 25f) % 360f
                     val cx = c * cellW + cellW / 2f
                     val cy = r * cellH + cellH / 2f
-                    val pw = (cellW * 0.45f).coerceAtMost(14f)
-                    val ph = (cellH * 0.45f).coerceAtMost(10f)
-                    canvas.drawRoundRect(cx - pw, cy - ph, cx + pw, cy + ph, 4f, 4f, paint)
+                    val hw = cellW * 0.4f
+                    val hh = cellH * 0.4f
 
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2f
+                    // Outer glow
+                    paint.style = Paint.Style.FILL
+                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.9f, 1f))
+                    paint.maskFilter = BlurMaskFilter(14f, BlurMaskFilter.Blur.NORMAL)
+                    canvas.drawRoundRect(cx - hw, cy - hh, cx + hw, cy + hh, 6f, 6f, paint)
+
+                    // Inner bright core
                     paint.maskFilter = null
-                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.6f, 0.7f))
-                    canvas.drawRoundRect(cx - pw + 2f, cy - ph + 2f, cx + pw - 2f, cy + ph - 2f, 3f, 3f, paint)
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 3f
+                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.5f, 0.9f))
+                    canvas.drawRoundRect(cx - hw + 2f, cy - hh + 2f, cx + hw - 2f, cy + hh - 2f, 5f, 5f, paint)
+
+                    paint.style = Paint.Style.FILL
                 }
             }
         }
@@ -612,7 +616,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     }
                 }
                 "rgb_glow" -> {
-                    if (snakeWave == null) snakeWave = SnakeWave(0f, 6f, true, random.nextFloat() * 360f)
+                    if (snakeWave == null) snakeWave = SnakeWave(0f, 4f, true, random.nextFloat() * 360f)
                 }
             }
         }
