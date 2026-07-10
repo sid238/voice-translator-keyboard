@@ -75,7 +75,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
         galaxyParticles.clear()
         mechanicalFlashes.clear()
         trailPoints.clear()
-        snakeWave = null
         trailPath.reset()
         isPressed = false
         pressEffectActive = false
@@ -101,7 +100,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
             pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
             isPressed = true; pressEffectActive = true
             if (effectType == "matrix_rain") matrixRainBg(w, h)
-            else if (effectType == "rgb_glow") { snakeWave = SnakeWave(0f, 4f, true, random.nextFloat() * 360f) }
             postInvalidateOnAnimation()
         } else {
             clearAll(); postInvalidate()
@@ -279,24 +277,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
         mechanicalFlashes.add(MechanicalFlash(x, y, width, height, 255))
     }
 
-    // --- SNAKE WAVE RGB (Ambient) ---
-    private class SnakeWave(
-        var position: Float,             // 0..totalCells, continuous wave head
-        var speed: Float,                 // cells per second
-        var active: Boolean,
-        var hueOffset: Float
-    )
-
-    private var snakeWave: SnakeWave? = null
-
-    private fun snakePathToGrid(pos: Float, cols: Int, rows: Int): Pair<Int, Int> {
-        val total = cols * rows
-        val p = ((pos % total) + total) % total
-        val row = (p / cols).toInt().coerceIn(0, rows - 1)
-        val colInRow = (p % cols).toInt()
-        val col = if (row % 2 == 0) colInRow else cols - 1 - colInRow
-        return Pair(row, col)
-    }
 
     // --- ON DRAW ---
     override fun onDraw(canvas: Canvas) {
@@ -560,48 +540,30 @@ class KeyboardEffectsView @JvmOverloads constructor(
             }
         }
 
-        // 7. Draw Snake Wave RGB (ambient gaming keyboard style)
-        val sw = snakeWave
-        if (ambientMode && sw != null && sw.active) {
+        // 7. Draw RGB ambient glow (per-key color cycle)
+        if (ambientMode && effectType == "rgb_glow") {
             needsRedraw = true
-            val dt = 0.016f
             val cols = 10; val rows = 5
             val cellW = width / cols; val cellH = height / rows
-            sw.position += sw.speed * dt
-            val totalCells = cols * rows
-            val hue = (sw.hueOffset + sw.position * 360f / totalCells) % 360f
 
             for (r in 0 until rows) {
                 for (c in 0 until cols) {
-                    val colInRow = if (r % 2 == 0) c else cols - 1 - c
-                    val cellIndex = r * cols + colInRow
-                    var dist = sw.position - cellIndex
-                    dist = ((dist % totalCells) + totalCells) % totalCells
-                    if (dist > totalCells * 0.5f) dist = totalCells - dist
-                    val intensity = (1f - (dist / 3.5f).coerceIn(0f, 1f)).toDouble()
-                    val alpha = (intensity * intensity * 255).toInt().coerceIn(0, 255)
-                    if (alpha < 10) continue
-
-                    val cellHue = (hue + dist * 25f) % 360f
+                    val cellHue = (rgbHue + r * 30f + c * 20f) % 360f
                     val cx = c * cellW + cellW / 2f
                     val cy = r * cellH + cellH / 2f
-                    val hw = cellW * 0.4f
-                    val hh = cellH * 0.4f
+                    val hw = cellW * 0.38f
+                    val hh = cellH * 0.38f
 
-                    // Outer glow
                     paint.style = Paint.Style.FILL
-                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.9f, 1f))
-                    paint.maskFilter = BlurMaskFilter(14f, BlurMaskFilter.Blur.NORMAL)
+                    paint.color = Color.HSVToColor(180, floatArrayOf(cellHue, 0.8f, 1f))
+                    paint.maskFilter = BlurMaskFilter(16f, BlurMaskFilter.Blur.NORMAL)
                     canvas.drawRoundRect(cx - hw, cy - hh, cx + hw, cy + hh, 6f, 6f, paint)
 
-                    // Inner bright core
                     paint.maskFilter = null
                     paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 3f
-                    paint.color = Color.HSVToColor(alpha, floatArrayOf(cellHue, 0.5f, 0.9f))
-                    canvas.drawRoundRect(cx - hw + 2f, cy - hh + 2f, cx + hw - 2f, cy + hh - 2f, 5f, 5f, paint)
-
-                    paint.style = Paint.Style.FILL
+                    paint.strokeWidth = 2f
+                    paint.color = Color.HSVToColor(140, floatArrayOf(cellHue, 0.6f, 0.9f))
+                    canvas.drawRoundRect(cx - hw + 3f, cy - hh + 3f, cx + hw - 3f, cy + hh - 3f, 5f, 5f, paint)
                 }
             }
         }
@@ -614,9 +576,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     if (matrixStreams.size < (width / 8).coerceAtLeast(12)) {
                         matrixRainBg(width, height)
                     }
-                }
-                "rgb_glow" -> {
-                    if (snakeWave == null) snakeWave = SnakeWave(0f, 4f, true, random.nextFloat() * 360f)
                 }
             }
         }

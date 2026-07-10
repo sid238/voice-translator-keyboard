@@ -369,6 +369,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             isTranslationActive = false
             isAiChatActive = false
             hideTranslationOverlay()
+            hideAiSystemOverlay()
         }
         isWaitingForOcrGallery = false
         isHindiPage2 = false
@@ -431,7 +432,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 if (selectedAppText != null) {
                     if (!isAiChatActive) {
                         isAiChatActive = true
-                        isTranslationActive = false
+                    isTranslationActive = false
+                    hideTranslationOverlay()
                         updateKeyboardLayout()
                     }
                     val selText = selectedAppText ?: return@setOnClickListener
@@ -1487,7 +1489,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "Translation requires internet", Toast.LENGTH_SHORT).show(); return@createToolbarPillButton }
                         isTranslationActive = !isTranslationActive
                         if (isTranslationActive) {
-                            if (isAiChatActive) isAiChatActive = false
+                            if (isAiChatActive) {
+                                isAiChatActive = false
+                                hideAiSystemOverlay()
+                            }
                             showTranslationOverlay()
                         } else {
                             hideTranslationOverlay()
@@ -1610,6 +1615,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 isAiChatActive = !isAiChatActive
                 if (isAiChatActive) {
                     isTranslationActive = false
+                    hideTranslationOverlay()
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isNetworkAvailable()) {
                         isAiChatActive = false; updateKeyboardLayout()
                         Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
