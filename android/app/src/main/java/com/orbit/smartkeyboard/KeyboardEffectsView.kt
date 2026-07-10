@@ -8,8 +8,6 @@ import android.view.View
 import java.util.Random
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.math.roundToInt
-import kotlin.math.abs
 
 class KeyboardEffectsView @JvmOverloads constructor(
     context: Context,
@@ -51,7 +49,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
     private var pressHeight = 0
     private var isPressed = false
     private var pressEffectActive = false
-    private var ambientMode = false
 
     init {
         isClickable = false
@@ -94,35 +91,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
         isPressed = false
     }
 
-    fun setAmbient(enable: Boolean, w: Int, h: Int) {
-        ambientMode = enable
-        if (enable) {
-            pressX = w / 2f; pressY = h / 2f; pressWidth = w; pressHeight = h
-            isPressed = true; pressEffectActive = true
-            if (effectType == "matrix_rain") matrixRainBg(w, h)
-            postInvalidateOnAnimation()
-        } else {
-            clearAll(); postInvalidate()
-        }
-    }
-
-    private fun matrixRainBg(w: Int, h: Int) {
-        matrixStreams.clear()
-        for (i in 0 until (w / 10).coerceAtLeast(16)) {
-            val x = random.nextFloat() * w
-            val y = random.nextFloat() * h * -1
-            val speed = 2f + random.nextFloat() * 4f
-            val chars = mutableListOf<String>()
-            for (j in 0..14) { chars.add(matrixChars[random.nextInt(matrixChars.length)].toString()) }
-            matrixStreams.add(MatrixStream(x, y, speed, chars, 0, 200 + random.nextInt(56)))
-        }
-    }
-
-    fun clearAmbient() {
-        ambientMode = false
-        clearAll(); postInvalidate()
-    }
-
     fun triggerEffect(x: Float, y: Float, width: Int, height: Int) {
         when (effectType) {
             "fire" -> { fireParticles.clear(); spawnFire(x, y) }
@@ -131,7 +99,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
             "galaxy" -> { galaxyParticles.clear(); spawnGalaxy(x, y) }
             "mechanical_flash" -> { mechanicalFlashes.clear(); spawnMechanicalFlash(x, y, width, height) }
             "neon_trail" -> spawnNeonTap(x, y)
-            "rgb_glow" -> { /* ambient only */ }
         }
         postInvalidateOnAnimation()
     }
@@ -537,46 +504,6 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 paint.shader = radialGradient
                 canvas.drawCircle(f.x, f.y, radius, paint)
                 paint.shader = null
-            }
-        }
-
-        // 7. Draw RGB ambient glow (per-key color cycle)
-        if (ambientMode && effectType == "rgb_glow") {
-            needsRedraw = true
-            val cols = 10; val rows = 5
-            val cellW = width / cols; val cellH = height / rows
-
-            for (r in 0 until rows) {
-                for (c in 0 until cols) {
-                    val cellHue = (rgbHue + r * 30f + c * 20f) % 360f
-                    val cx = c * cellW + cellW / 2f
-                    val cy = r * cellH + cellH / 2f
-                    val hw = cellW * 0.38f
-                    val hh = cellH * 0.38f
-
-                    paint.style = Paint.Style.FILL
-                    paint.color = Color.HSVToColor(180, floatArrayOf(cellHue, 0.8f, 1f))
-                    paint.maskFilter = BlurMaskFilter(16f, BlurMaskFilter.Blur.NORMAL)
-                    canvas.drawRoundRect(cx - hw, cy - hh, cx + hw, cy + hh, 6f, 6f, paint)
-
-                    paint.maskFilter = null
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2f
-                    paint.color = Color.HSVToColor(140, floatArrayOf(cellHue, 0.6f, 0.9f))
-                    canvas.drawRoundRect(cx - hw + 3f, cy - hh + 3f, cx + hw - 3f, cy + hh - 3f, 5f, 5f, paint)
-                }
-            }
-        }
-
-        // Ambient mode: keep spawning effects across full area
-        if (ambientMode) {
-            needsRedraw = true
-            when (effectType) {
-                "matrix_rain" -> {
-                    if (matrixStreams.size < (width / 8).coerceAtLeast(12)) {
-                        matrixRainBg(width, height)
-                    }
-                }
             }
         }
 

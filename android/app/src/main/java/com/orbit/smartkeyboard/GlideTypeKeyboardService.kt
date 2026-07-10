@@ -129,7 +129,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     // Effects & Timeline & OCR settings
     private var keyboardEffect = "none"
-    private var ambientEffect = "none"
     private var keyboardEffectsView: KeyboardEffectsView? = null
     private var clipboardTimelineEnabled = false
     private var activeKeyboardArea: FrameLayout? = null
@@ -502,7 +501,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
-        ambientEffect = prefs.getString("ambient_effect", "none") ?: "none"
         clipboardTimelineEnabled = prefs.getBoolean("clipboard_timeline", false)
 
         val ocrImagePath = prefs.getString("ocr_image_path", null)
@@ -1097,17 +1095,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             ViewMode.OCR -> createOcrLayout()
         }
         // Ambient background effect in key gaps
-        if (ambientEffect in listOf("matrix_rain", "rgb_glow")) {
-            val bgEffectView = KeyboardEffectsView(this).apply {
-                setEffectType(ambientEffect)
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            keyboardArea.addView(bgEffectView, 0)
-            bgEffectView.post { bgEffectView.setAmbient(true, bgEffectView.width.coerceAtLeast(1), bgEffectView.height.coerceAtLeast(1)) }
-        }
         keyboardArea.addView(keysLayout)
 
         if (keyboardEffect != "none") {
@@ -1502,11 +1489,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     if (!online) transBtn.alpha = 0.4f
                     buttonsContainer.addView(transBtn)
                 }
-
-                // Ambient effect toggle
-                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_flash, ambientEffect in listOf("matrix_rain", "rgb_glow")) {
-                    toggleAmbientEffect()
-                })
 
                 // AI button - gradient, centered, Orbit identity
                 buttonsContainer.addView(createAiGradientButton())
@@ -3887,19 +3869,6 @@ hideAiSystemOverlay()
     }
 
     private var translationOverlayView: View? = null
-
-    private fun toggleAmbientEffect() {
-        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val current = ambientEffect
-        val next = when (current) {
-            "none" -> "matrix_rain"
-            "matrix_rain" -> "rgb_glow"
-            else -> "none"
-        }
-        prefs.edit().putString("ambient_effect", next).apply()
-        ambientEffect = next
-        updateKeyboardLayout()
-    }
 
     private fun showTranslationOverlay() {
         hideTranslationOverlay()
