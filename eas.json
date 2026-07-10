@@ -18,7 +18,30 @@
     },
     "production": {
       "android": {
-        "image": "latest"
+        "image": "latest",
+        "buildType": "release",
+        "gradleCommand": ":app:assembleRelease"
+      }
+    },
+    "production-arm64": {
+      "extends": "production",
+      "android": {
+        "gradleCommand": ":app:assembleRelease",
+        "buildType": "apk"
+      }
+    },
+    "production-armeabi": {
+      "extends": "production",
+      "android": {
+        "gradleCommand": ":app:assembleRelease",
+        "buildType": "apk"
+      }
+    },
+    "production-x86_64": {
+      "extends": "production",
+      "android": {
+        "gradleCommand": ":app:assembleRelease",
+        "buildType": "apk"
       }
     }
   },
