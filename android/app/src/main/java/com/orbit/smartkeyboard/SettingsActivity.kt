@@ -2,6 +2,8 @@ package com.orbit.smartkeyboard
 
 import android.app.Activity
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
@@ -10,6 +12,7 @@ import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import com.google.android.material.switchmaterial.SwitchMaterial
@@ -62,7 +65,9 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        CrashLogger.install(this)
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        showPreviousCrashIfAny()
 
         // Apply saved app theme (settings UI only)
         val appTheme = prefs.getString("app_theme", "dark") ?: "dark"
@@ -89,6 +94,17 @@ class SettingsActivity : AppCompatActivity() {
     private fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
     private fun putBoolean(key: String, value: Boolean) = prefs.edit().putBoolean(key, value).apply()
     private fun putInt(key: String, value: Int) = prefs.edit().putInt(key, value).apply()
+
+    private fun showPreviousCrashIfAny() {
+        val text = CrashLogger.readLastCrash() ?: return
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("crash", text))
+        AlertDialog.Builder(this)
+            .setTitle("Previous crash log (copied to clipboard)")
+            .setMessage(text)
+            .setPositiveButton("OK", null)
+            .show()
+    }
 
     // ---------- Status ----------
     private fun setupStatus() {

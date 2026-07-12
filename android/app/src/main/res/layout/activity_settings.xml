@@ -153,19 +153,19 @@
                 <TextView style="@style/RowLabel" android:text="Clipboard timeline" />
                 <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchClipboardTimeline" style="@style/RowSwitch" />
                 <TextView style="@style/RowLabel" android:text="Clipboard limit" />
-                <com.google.android.material.materialtextfield.TextInputLayout style="@style/RowInput" android:hint="100">
-                    <com.google.android.material.materialtextfield.TextInputEditText
+                <com.google.android.material.textfield.TextInputLayout style="@style/RowInput" android:hint="100">
+                    <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etClipLimit"
                         android:inputType="number"
                         android:text="100" />
-                </com.google.android.material.materialtextfield.TextInputLayout>
+                </com.google.android.material.textfield.TextInputLayout>
                 <TextView style="@style/RowLabel" android:text="Pin limit" />
-                <com.google.android.material.materialtextfield.TextInputLayout style="@style/RowInput" android:hint="10">
-                    <com.google.android.material.materialtextfield.TextInputEditText
+                <com.google.android.material.textfield.TextInputLayout style="@style/RowInput" android:hint="10">
+                    <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etPinLimit"
                         android:inputType="number"
                         android:text="10" />
-                </com.google.android.material.materialtextfield.TextInputLayout>
+                </com.google.android.material.textfield.TextInputLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

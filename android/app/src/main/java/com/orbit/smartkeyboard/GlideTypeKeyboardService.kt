@@ -335,6 +335,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     )
 
     override fun onCreate() {
+        CrashLogger.install(this)
         super.onCreate()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         loadPreferences()
