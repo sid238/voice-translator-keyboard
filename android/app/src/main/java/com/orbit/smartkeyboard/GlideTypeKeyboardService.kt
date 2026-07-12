@@ -73,7 +73,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var translationInputField: EditText? = null
     // grammar now uses currentInputConnection directly
     private var longPressDelayMs = 300
-    private var keyboardHeightDp = 220 // Default keyboard height
+    private var keyboardHeightDp = 360 // Default keyboard height (~54dp keys with 5 rows)
     private var isSizeAdjustActive = false
     private var keyboardWidthPercent = 100
     private var keyboardGravity = Gravity.CENTER_HORIZONTAL
@@ -86,8 +86,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var autoCapEnabled = false
     private var doubleSpacePeriodEnabled = true
     private var suggestionsEnabled = true
-    private var keySpacingDp = 5
-    private var keyRadiusDp = 14
+    private var keySpacingDp = 4
+    private var keyRadiusDp = 16
     private var keyFontSizeSp = 0 // 0 = follow system default
     private var lastSpacePressTime: Long = 0
     private var adaptiveThemeEnabled = false
@@ -527,7 +527,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 220)
+        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 360)
         keyboardWidthPercent = prefs.getInt("keyboard_width_percent", 100)
         keyboardGravity = prefs.getInt("keyboard_gravity", Gravity.CENTER_HORIZONTAL)
         
@@ -544,7 +544,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
-        keySpacingDp = prefs.getInt("key_spacing_dp", 5)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 4)
         keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
@@ -1031,7 +1031,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
             val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
             val calculatedHeight = if (isLandscape) {
-                (keyboardHeightDp * 1.2f).toInt().coerceIn(200, 320)
+                (keyboardHeightDp * 1.15f).toInt().coerceIn(220, 420)
             } else {
                 keyboardHeightDp
             }
@@ -1378,7 +1378,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             return createFontSelectorView()
         }
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(52)
+        val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(46)
 
         // Integrated toolbar: same Material surface family as the keys, sitting
         // flush with the keyboard. A subtle outlineVariant hairline + slight
@@ -1395,7 +1395,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val isUiDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         val toolbarBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dpToPx(14).toFloat()
+            cornerRadius = dpToPx(24).toFloat()
             color = ColorStateList.valueOf(Color.argb(if (isUiDark) 0xF2 else 0xF7, Color.red(surfaceHigh), Color.green(surfaceHigh), Color.blue(surfaceHigh)))
             val ov = matOutlineVariant
             setStroke(dpToPx(1), Color.argb(0x40, Color.red(ov), Color.green(ov), Color.blue(ov)))
@@ -1904,12 +1904,12 @@ hideAiSystemOverlay()
                         setTextColor(themeTextColor)
                         val isSingleChar = text.length == 1
                         val textSize = if (isSingleChar) {
-                            if (isLandscape) 22f else 20f
+                            if (isLandscape) 24f else 22f
                         } else {
                             if (isLandscape) 16f else 15f
                         }
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, if (keyFontSizeSp > 0) keyFontSizeSp.toFloat() else textSize)
-                        setTypeface(null, android.graphics.Typeface.BOLD)
+                        setTypeface(keyLabelTypeface)
                         gravity = Gravity.CENTER
                         isClickable = false
                         isFocusable = false
@@ -3470,6 +3470,18 @@ hideAiSystemOverlay()
     private fun dpToPx(dp: Int): Int {
         val density = resources.displayMetrics.density
         return (dp * density).toInt()
+    }
+
+    // Key label typeface: prefer Google Sans Text (Pixel / modern devices) and
+    // fall back to Roboto Flex / Roboto Medium. Bold but balanced, Gboard-like.
+    private val keyLabelTypeface: Typeface by lazy {
+        try {
+            Typeface.create("google-sans", Typeface.BOLD)
+                ?: Typeface.create("sans-serif-medium", Typeface.BOLD)
+                ?: Typeface.DEFAULT_BOLD
+        } catch (e: Exception) {
+            Typeface.DEFAULT_BOLD
+        }
     }
 
     private fun sysColor(name: String): Int? {
