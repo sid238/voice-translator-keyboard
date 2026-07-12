@@ -108,7 +108,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var soundEnabled = false
     private var numberRowEnabled = true
     // gesture/glide typing removed
-    private var themeName = "purple"
+    private var themeName = "dynamic"
     private var translationFeatureEnabled = true
 
     private fun isNetworkAvailable(): Boolean {
@@ -126,6 +126,19 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var themeToolbarBg = "#1A1A1A"
     private var themeTextColor = Color.WHITE
     private var themeHintColor = "#7AFFFFFF"
+
+    // Material You (Monet) dynamic color roles, resolved at runtime from the
+    // system tonal palettes. These drive the whole keyboard so colors adapt
+    // automatically to the wallpaper (light / dark / dynamic) with a Material
+    // baseline fallback when dynamic color is unavailable.
+    private var matIsDark = true
+    private var matSurfaceLow = Color.parseColor("#121212")
+    private var matSurface = Color.parseColor("#232327")
+    private var matSurfaceHigh = Color.parseColor("#2E2E33")
+    private var matPrimary = Color.parseColor("#7C8CF8")
+    private var matOnSurface = Color.WHITE
+    private var matOnSurfaceVariant = Color.parseColor("#CAC4D0")
+    private var matOutlineVariant = Color.parseColor("#49454F")
 
     // Effects & Timeline & OCR settings
     private var keyboardEffect = "none"
@@ -176,8 +189,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var currentAiResponse: String? = null
     private var isAiLoading = false
     private var aiInputField: EditText? = null
-    private var landscapeBufferField: EditText? = null
-    private var landscapeBufferText: String? = null
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -376,6 +387,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         // Refresh preferences and clipboard history when IME is shown
         loadPreferences()
         fetchSystemClipboard()
+        updateShiftStateBasedOnContext()
         updateKeyboardLayout()
     }
 
@@ -497,7 +509,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
-        keySpacingDp = prefs.getInt("key_spacing_dp", 3)
+        keySpacingDp = prefs.getInt("key_spacing_dp", 5)
         keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
         keyboardEffect = prefs.getString("keyboard_effect", "none") ?: "none"
@@ -593,34 +605,38 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
             "dynamic" -> {
                 val isDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-                val dynamicAccent = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                    try {
-                        val color = resources.getColor(android.R.color.system_accent1_500, theme)
-                        String.format("#%06X", 0xFFFFFF and color)
-                    } catch (e: Exception) {
-                        "#00D68F"
+                val usedDynamic = resolveMaterialPalette(isDark)
+                if (!usedDynamic) {
+                    // Material baseline fallback when dynamic color (Monet) is unavailable
+                    if (isDark) {
+                        matSurfaceLow = Color.parseColor("#121212")
+                        matSurface = Color.parseColor("#232327")
+                        matSurfaceHigh = Color.parseColor("#2E2E33")
+                        matPrimary = Color.parseColor("#7C8CF8")
+                        matOnSurface = Color.WHITE
+                        matOnSurfaceVariant = Color.parseColor("#CAC4D0")
+                        matOutlineVariant = Color.parseColor("#49454F")
+                    } else {
+                        matSurfaceLow = Color.parseColor("#F2F1F4")
+                        matSurface = Color.parseColor("#FFFFFF")
+                        matSurfaceHigh = Color.parseColor("#E7E0EC")
+                        matPrimary = Color.parseColor("#6750A4")
+                        matOnSurface = Color.BLACK
+                        matOnSurfaceVariant = Color.parseColor("#49454F")
+                        matOutlineVariant = Color.parseColor("#CAC4D0")
                     }
-                } else {
-                    "#00D68F"
+                    matIsDark = isDark
                 }
 
-                if (isDark) {
-                    themeBgColor = "#121212"
-                    themeAccentColor = dynamicAccent
-                    themeSpecialKeyBg = "#2E2E2E"
-                    themeRegularKeyBg = "#1F1F1F"
-                    themeToolbarBg = "#1A1A1A"
-                    themeTextColor = Color.WHITE
-                    themeHintColor = "#7AFFFFFF"
-                } else {
-                    themeBgColor = "#F9F9F9"
-                    themeAccentColor = dynamicAccent
-                    themeSpecialKeyBg = "#D2D5DB"
-                    themeRegularKeyBg = "#FFFFFF"
-                    themeToolbarBg = "#E5E5EA"
-                    themeTextColor = Color.BLACK
-                    themeHintColor = "#7A000000"
-                }
+                themeBgColor = String.format("#%06X", 0xFFFFFF and matSurfaceLow)
+                themeAccentColor = String.format("#%06X", 0xFFFFFF and matPrimary)
+                themeSpecialKeyBg = String.format("#%06X", 0xFFFFFF and matSurfaceHigh)
+                themeRegularKeyBg = String.format("#%06X", 0xFFFFFF and matSurface)
+                themeToolbarBg = String.format("#%06X", 0xFFFFFF and matSurfaceHigh)
+                themeTextColor = matOnSurface
+                themeHintColor = String.format("#%02X%06X",
+                    if (matIsDark) 0xB3 else 0x99,
+                    0xFFFFFF and matOnSurfaceVariant)
             }
         }
 
@@ -1018,60 +1034,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             mainLayout.addView(createToolbar())
         }
 
-        // Landscape text buffer (type in keyboard, confirm with OK)
-        if (isLandscape && currentViewMode == ViewMode.QWERTY && !isTranslationActive && !isAiChatActive) {
-            val bufferRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(34))
-            }
-            val bufferEdit = EditText(this).apply {
-                landscapeBufferField = this
-                showSoftInputOnFocus = false
-                val existingText = currentInputConnection?.getTextBeforeCursor(2000, 0)?.toString() ?: landscapeBufferText
-                if (existingText != null) {
-                    setText(existingText)
-                    currentInputConnection?.deleteSurroundingText(existingText.length, 0)
-                }
-                setSelection(existingText?.length ?: 0)
-                hint = "Type here, press OK to send"
-                setHintTextColor(Color.parseColor("#66FFFFFF"))
-                setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-                background = createKeyDrawableWithRadius(Color.parseColor("#333355"), 4)
-                maxLines = 1; isSingleLine = true
-                setPadding(dpToPx(8), 0, dpToPx(8), 0)
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
-                onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus -> internalEditTextFocused = if (hasFocus) this else null }
-                post { requestFocus() }
-                setOnClickListener { /* keep focus */ }
-                addTextChangedListener(object : android.text.TextWatcher {
-                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-                    override fun afterTextChanged(s: android.text.Editable?) { landscapeBufferText = s?.toString() }
-                })
-            }
-            bufferRow.addView(bufferEdit)
-            val okBtn = FrameLayout(this).apply {
-                background = createKeyDrawable(Color.parseColor(themeAccentColor))
-                isClickable = true
-                layoutParams = LinearLayout.LayoutParams(dpToPx(44), ViewGroup.LayoutParams.MATCH_PARENT)
-                setOnClickListener {
-                    val inputText = bufferEdit.text.toString()
-                    if (inputText.isNotEmpty()) {
-                        currentInputConnection?.commitText(inputText, 1)
-                    }
-                    landscapeBufferText = null
-                    requestHideSelf(0)
-                }
-                addView(TextView(this@GlideTypeKeyboardService).apply {
-                    text = "OK"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                    setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
-                    layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-                })
-            }
-            bufferRow.addView(okBtn)
-            mainLayout.addView(bufferRow)
+        // Landscape: type directly into the focused app field (no separate buffer).
+        // Fullscreen mode is disabled (onEvaluateFullscreenMode -> false) so the
+        // app keeps the input field visible above the keyboard, just like Gboard.
+        if (isLandscape && !isTranslationActive && !isAiChatActive) {
+            internalEditTextFocused = null
         }
 
         val keyboardArea = FrameLayout(this).apply {
@@ -1345,10 +1312,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(38),
-                dpToPx(30)
+                dpToPx(48),
+                dpToPx(48)
             ).apply {
-                setMargins(dpToPx(4), 0, dpToPx(4), 0)
+                setMargins(dpToPx(3), 0, dpToPx(3), 0)
             }
             setOnClickListener {
                 vibrateClick()
@@ -1358,10 +1325,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         val imageView = ImageView(this).apply {
             setImageResource(resId)
-            setColorFilter(Color.WHITE)
+            setColorFilter(if (isRedBackground) Color.WHITE else matOnSurface)
             layoutParams = FrameLayout.LayoutParams(
-                dpToPx(18),
-                dpToPx(18)
+                dpToPx(24),
+                dpToPx(24)
             ).apply {
                 gravity = Gravity.CENTER
             }
@@ -1377,21 +1344,25 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(52)
 
-        // Glassmorphism floating toolbar wrapper
+        // Integrated toolbar: same Material surface family as the keys, sitting
+        // flush with the keyboard. A subtle outlineVariant hairline + slight
+        // translucency (blur feel) keeps it from looking like a floating card.
         val wrapper = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 toolbarHeight
             )
-            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            setPadding(dpToPx(if (isToolbarCollapsed) 0 else 6), dpToPx(if (isToolbarCollapsed) 6 else 2), dpToPx(6), dpToPx(if (isToolbarCollapsed) 6 else 2))
         }
 
+        val surfaceHigh = Color.parseColor(themeToolbarBg)
+        val isUiDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         val toolbarBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dpToPx(keyRadiusDp).toFloat()
-            setColor(Color.parseColor("#CC1A1A2E"))
-            val accentDimmed = Color.parseColor(themeAccentColor)
-            setStroke(dpToPx(1), Color.argb(40, Color.red(accentDimmed), Color.green(accentDimmed), Color.blue(accentDimmed)))
+            cornerRadius = dpToPx(14).toFloat()
+            color = ColorStateList.valueOf(Color.argb(if (isUiDark) 0xF2 else 0xF7, Color.red(surfaceHigh), Color.green(surfaceHigh), Color.blue(surfaceHigh)))
+            val ov = matOutlineVariant
+            setStroke(dpToPx(1), Color.argb(0x40, Color.red(ov), Color.green(ov), Color.blue(ov)))
         }
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1408,7 +1379,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         if (isToolbarCollapsed) {
             toolbar.removeAllViews()
             val line = View(this).apply {
-                background = createKeyDrawableWithRadius(Color.parseColor("#88FFFFFF"), 2)
+                background = createKeyDrawableWithRadius(matOnSurfaceVariant, 2)
                 layoutParams = FrameLayout.LayoutParams(dpToPx(60), dpToPx(4)).apply {
                     gravity = Gravity.CENTER
                 }
@@ -1560,19 +1531,19 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     private fun createToolbarPillButton(iconRes: Int, isActive: Boolean, onClick: () -> Unit): View {
-        val bgColor = if (isActive) Color.parseColor(themeAccentColor) else Color.parseColor("#44222222")
+        val bgColor = if (isActive) matPrimary else Color.TRANSPARENT
         return FrameLayout(this).apply {
             background = createKeyDrawable(bgColor)
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply {
+                setMargins(dpToPx(3), 0, dpToPx(3), 0)
             }
             setOnClickListener { vibrateClick(); onClick() }
             addView(ImageView(this@GlideTypeKeyboardService).apply {
                 setImageResource(iconRes)
-                setColorFilter(if (isActive) Color.WHITE else Color.parseColor("#AAFFFFFF"))
-                layoutParams = FrameLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { gravity = Gravity.CENTER }
+                setColorFilter(if (isActive) Color.WHITE else matOnSurface)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22)).apply { gravity = Gravity.CENTER }
             })
         }
     }
@@ -2298,11 +2269,15 @@ hideAiSystemOverlay()
                 }
                 else -> {
                     val transformed = if (key.length == 1) applyFontTransformation(key) else key
+                    val wasShifted = isShifted
                     et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
                     if (isShifted && !isCapsLock) {
                         isShifted = false
                     }
                     wasLastKeySpace = false
+                    if (isShifted != wasShifted) {
+                        updateKeyboardLayout()
+                    }
                 }
             }
             return
@@ -2332,7 +2307,11 @@ hideAiSystemOverlay()
                 }
             }
             wasLastKeySpace = key == "spacebar" || key == " " || key == "␣"
-            if (isShifted && !isCapsLock) isShifted = false
+            if (isShifted && !isCapsLock) {
+                val wasShifted = isShifted
+                isShifted = false
+                if (isShifted != wasShifted) updateKeyboardLayout()
+            }
             return
         }
         val intFocused = internalEditTextFocused
@@ -2427,12 +2406,21 @@ hideAiSystemOverlay()
             }
             else -> {
                 val transformed = if (key.length == 1) applyFontTransformation(key) else key
+                val wasShifted = isShifted
                 ic.commitText(transformed, 1)
                 if (isShifted && !isCapsLock) {
                     isShifted = false
                 }
                 wasLastKeySpace = false
-                updateShiftStateBasedOnContext()
+                // Only re-evaluate auto-cap for non-shifted input. Re-running it right
+                // after a shifted commit can read a stale (empty) buffer and falsely
+                // re-lock shift, so skip it when we just typed a shifted character.
+                if (!wasShifted) {
+                    updateShiftStateBasedOnContext()
+                }
+                if (isShifted != wasShifted) {
+                    updateKeyboardLayout()
+                }
             }
         }
     }
@@ -3415,7 +3403,7 @@ hideAiSystemOverlay()
             setColor(Color.WHITE)
         }
         return RippleDrawable(
-            ColorStateList.valueOf(Color.parseColor("#44FFFFFF")),
+            ColorStateList.valueOf(Color.argb(0x40, Color.red(matOnSurface), Color.green(matOnSurface), Color.blue(matOnSurface))),
             content,
             mask
         )
@@ -3434,7 +3422,7 @@ hideAiSystemOverlay()
             setColor(Color.WHITE)
         }
         return RippleDrawable(
-            ColorStateList.valueOf(Color.parseColor("#44FFFFFF")),
+            ColorStateList.valueOf(Color.argb(0x40, Color.red(matOnSurface), Color.green(matOnSurface), Color.blue(matOnSurface))),
             content,
             mask
         )
@@ -3451,10 +3439,51 @@ hideAiSystemOverlay()
         return (dp * density).toInt()
     }
 
+    private fun sysColor(name: String): Int? {
+        return try {
+            val id = resources.getIdentifier(name, "color", "android")
+            if (id != 0) resources.getColor(id, theme) else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun blendColors(c1: Int, c2: Int, ratio: Float): Int {
+        val r = (Color.red(c1) + (Color.red(c2) - Color.red(c1)) * ratio).toInt()
+        val g = (Color.green(c1) + (Color.green(c2) - Color.green(c1)) * ratio).toInt()
+        val b = (Color.blue(c1) + (Color.blue(c2) - Color.blue(c1)) * ratio).toInt()
+        return Color.rgb(r, g, b)
+    }
+
+    // Resolve Material 3 color roles from the system dynamic (Monet) palettes.
+    // Uses the documented system_neutral*/system_accent* tonal resources (API 31+).
+    // On older devices / failure, returns null so the caller can use the baseline.
+    private fun resolveMaterialPalette(isDark: Boolean): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return false
+        val n1: (Int) -> Int? = { sysColor("system_neutral1_$it") }
+        val n2: (Int) -> Int? = { sysColor("system_neutral2_$it") }
+        val a1: (Int) -> Int? = { sysColor("system_accent1_$it") }
+        val n1Base = if (isDark) (n1(10) ?: return false) else (n1(90) ?: return false)
+        val n1Mid = if (isDark) (n1(50) ?: return false) else (n1(50) ?: return false)
+        val n2Base = if (isDark) (n2(30) ?: return false) else (n2(80) ?: return false)
+        val n2Mid = if (isDark) (n2(80) ?: return false) else (n2(30) ?: return false)
+        val accent = if (isDark) (a1(200) ?: return false) else (a1(500) ?: return false)
+
+        matIsDark = isDark
+        matSurfaceLow = n1Base
+        matSurface = blendColors(n1Base, n1Mid, if (isDark) 0.16f else 0.28f)
+        matSurfaceHigh = blendColors(n1Base, n1Mid, if (isDark) 0.34f else 0.5f)
+        matPrimary = accent
+        matOnSurface = if (isDark) blendColors(n1Mid, Color.WHITE, 0.85f) else blendColors(n1Mid, Color.BLACK, 0.78f)
+        matOnSurfaceVariant = n2Mid
+        matOutlineVariant = n2Base
+        return true
+    }
+
     private fun createTranslationBar(): View {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#CC1A1A2E"))
+            setBackgroundColor(Color.argb(0xF2, Color.red(matSurface), Color.green(matSurface), Color.blue(matSurface)))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
