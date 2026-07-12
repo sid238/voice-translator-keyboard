@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingTop="4dip"
+        android:paddingBottom="4dip">
+
+        <TextView
+            android:id="@android:id/inputExtractAccessories"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="10dip"
+            android:paddingEnd="4dip"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@android:id/inputExtractAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="4dip"
+            android:paddingEnd="10dip"
+            android:textAppearance="?android:attr/textAppearanceMedium" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1px"
+        android:background="?android:attr/colorControlNormal" />
+
+    <ExtractEditText
+        android:id="@android:id/inputExtractEditText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@null"
+        android:bufferType="spannable"
+        android:ellipsize="end"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:gravity="center_vertical|left|top"
+        android:imeOptions="actionNone"
+        android:inputType="text|textAutoComplete|textMultiLine"
+        android:paddingStart="12dip"
+        android:paddingTop="8dip"
+        android:paddingEnd="12dip"
+        android:paddingBottom="8dip"
+        android:scrollHorizontally="true"
+        android:textSize="18sp" />
+</LinearLayout>

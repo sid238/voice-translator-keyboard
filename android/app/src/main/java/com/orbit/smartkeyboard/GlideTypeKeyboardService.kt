@@ -349,7 +349,28 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     override fun onEvaluateFullscreenMode(): Boolean {
-        return false
+        // In landscape, go fullscreen and show the extracted text field above the
+        // keyboard (just like Gboard) so the user can see what they type and the
+        // app field stays visible. Backspace/input flow through the live
+        // InputConnection, so everything keeps working.
+        return resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    override fun onCreateExtractTextView(): View {
+        val extractView = layoutInflater.inflate(R.layout.extract, null)
+        val bg = Color.parseColor(themeBgColor)
+        extractView.setBackgroundColor(bg)
+        val et = extractView.findViewById<android.inputmethodservice.ExtractEditText>(android.R.id.inputExtractEditText)
+        et?.apply {
+            setBackgroundColor(bg)
+            setTextColor(themeTextColor)
+            setHintTextColor(if (matIsDark) Color.parseColor("#66FFFFFF") else Color.parseColor("#61000000"))
+        }
+        val accessories = extractView.findViewById<TextView>(android.R.id.inputExtractAccessories)
+        accessories?.setTextColor(themeTextColor)
+        val action = extractView.findViewById<TextView>(android.R.id.inputExtractAction)
+        action?.setTextColor(themeTextColor)
+        return extractView
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
@@ -371,6 +392,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        // Load preferences (theme colors, etc.) before super so the extracted
+        // text view created during fullscreen evaluation gets the right colors.
+        loadPreferences()
         super.onStartInputView(info, restarting)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -384,8 +408,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         isWaitingForOcrGallery = false
         isHindiPage2 = false
         isSymbolsPage2 = false
-        // Refresh preferences and clipboard history when IME is shown
-        loadPreferences()
+        // Refresh clipboard history when IME is shown
         fetchSystemClipboard()
         updateShiftStateBasedOnContext()
         updateKeyboardLayout()
@@ -441,14 +464,26 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28))
             setOnClickListener { vibrateClick()
                 if (selectedAppText != null) {
-                    if (!isAiChatActive) {
-                        isAiChatActive = true
-                    isTranslationActive = false
-                    hideTranslationOverlay()
-                        updateKeyboardLayout()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isNetworkAvailable()) {
+                        Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this@GlideTypeKeyboardService)) {
+                        Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for AI popup", Toast.LENGTH_LONG).show()
+                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+                        return@setOnClickListener
                     }
                     val selText = selectedAppText ?: return@setOnClickListener
                     selectedAppText = null
+                    if (!isAiChatActive) {
+                        isAiChatActive = true
+                        isTranslationActive = false
+                        hideTranslationOverlay()
+                        updateKeyboardLayout()
+                        showAiSystemOverlay()
+                    }
+                    // Panel now exists (just created, or already open); append the
+                    // message via manual addView and keep history in sync.
                     aiChatMessages.add(true to "Fix grammar: $selText")
                     aiOverlayChatContainer?.addView(createChatBubble(true, "Fix grammar: $selText"))
                     aiOverlayChatContainer?.let { c ->
@@ -1035,8 +1070,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
 
         // Landscape: type directly into the focused app field (no separate buffer).
-        // Fullscreen mode is disabled (onEvaluateFullscreenMode -> false) so the
-        // app keeps the input field visible above the keyboard, just like Gboard.
+        // onEvaluateFullscreenMode() returns true in landscape, so the system shows
+        // the extracted text field above the keyboard (Gboard-style) and the live
+        // InputConnection stays active, keeping backspace / typing working.
         if (isLandscape && !isTranslationActive && !isAiChatActive) {
             internalEditTextFocused = null
         }
@@ -1753,14 +1789,11 @@ hideAiSystemOverlay()
         } else {
             listOf("*", "\"", "'", ":", ";", "!", "?", "\\", "_")
         }
-        val row4 = if (isSymbolsPage2) {
-            listOf("1/2", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
-        } else {
-            listOf("2/2", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
-        }
-        val row5 = listOf("ABC", "emoji", "Spacebar", ",", "Enter")
+        // Navigation row stays identical across pages (emoji, a few symbols, Back)
+        val row4 = listOf("emoji", "~", "`", "|", "<", ">", "=", "[", "]", "Back")
+        // Consistent bottom row: ABC toggle, page switch (1/2 <-> 2/2), Space, comma, Enter
+        val row5 = listOf("ABC", if (isSymbolsPage2) "2/2" else "1/2", "Spacebar", ",", "Enter")
 
-        // Number row is always visible in symbols mode
         layout.addView(createKeyRow(row1))
         layout.addView(createKeyRow(row2))
         layout.addView(createKeyRow(row3))
