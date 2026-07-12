@@ -8,6 +8,7 @@ import android.content.Intent
 import android.provider.Settings
 import android.inputmethodservice.InputMethodService
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList

@@ -1,10 +1,10 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:app="http://schemas.android.com/apk/res-auto">
     <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
         <item name="colorSecondary">@color/colorSecondary</item>
-        <item name="colorSurface">@color/colorSurface</color>
+        <item name="colorSurface">@color/colorSurface</item>
         <item name="colorOnSurface">@color/colorOnSurface</item>
         <item name="android:statusBarColor">#121212</item>
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
@@ -36,9 +36,6 @@
     <style name="SettingsCard" parent="Widget.MaterialComponents.CardView">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="app:cardCornerRadius">16dp</item>
-        <item name="app:cardElevation">2dp</item>
-        <item name="app:contentPadding">4dp</item>
         <item name="android:layout_marginBottom">12dp</item>
     </style>
 

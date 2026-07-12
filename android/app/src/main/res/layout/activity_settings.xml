@@ -68,7 +68,7 @@
 
         <!-- Appearance -->
         <TextView style="@style/SectionHeader" android:text="Appearance" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Theme" />
                 <Spinner android:id="@+id/spinnerTheme" style="@style/RowControl" />
@@ -83,7 +83,7 @@
 
         <!-- Languages -->
         <TextView style="@style/SectionHeader" android:text="Languages" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Default language" />
                 <Spinner android:id="@+id/spinnerLang" style="@style/RowControl" />
@@ -94,7 +94,7 @@
 
         <!-- Layout -->
         <TextView style="@style/SectionHeader" android:text="Layout" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView android:id="@+id/tvHeight" style="@style/RowLabel" android:text="Height: 360 dp" />
                 <SeekBar android:id="@+id/sliderHeight" style="@style/RowSeek" android:max="250" android:progress="160" />
@@ -109,7 +109,7 @@
 
         <!-- Typing -->
         <TextView style="@style/SectionHeader" android:text="Typing" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Auto-capitalize" />
                 <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoCap" style="@style/RowSwitch" />
@@ -126,7 +126,7 @@
 
         <!-- Feedback -->
         <TextView style="@style/SectionHeader" android:text="Feedback" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Sound" />
                 <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSound" style="@style/RowSwitch" />
@@ -137,7 +137,7 @@
 
         <!-- Add-ons -->
         <TextView style="@style/SectionHeader" android:text="Add-ons" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Voice text" />
                 <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchVoice" style="@style/RowSwitch" />
@@ -148,7 +148,7 @@
 
         <!-- Clipboard -->
         <TextView style="@style/SectionHeader" android:text="Clipboard" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Clipboard timeline" />
                 <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchClipboardTimeline" style="@style/RowSwitch" />
@@ -171,7 +171,7 @@
 
         <!-- Emoji & App theme -->
         <TextView style="@style/SectionHeader" android:text="Emoji &amp; Interface" />
-        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard" app:cardCornerRadius="16dp" app:cardElevation="2dp" app:contentPadding="4dp">
             <LinearLayout style="@style/SettingsBody">
                 <TextView style="@style/RowLabel" android:text="Emoji scale" />
                 <Spinner android:id="@+id/spinnerEmoji" style="@style/RowControl" />

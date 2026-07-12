@@ -12,7 +12,6 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import com.google.android.material.materialtextfield.TextInputEditText
 import com.google.android.material.switchmaterial.SwitchMaterial
 import java.io.File
 import java.io.FileOutputStream
@@ -271,12 +270,12 @@ class SettingsActivity : AppCompatActivity() {
     // ---------- Clipboard ----------
     private fun setupClipboard() {
         bindSwitch(R.id.switchClipboardTimeline, "clipboard_timeline", false)
-        val clipLimit = findViewById<TextInputEditText>(R.id.etClipLimit)
+        val clipLimit = findViewById<EditText>(R.id.etClipLimit)
         clipLimit.setText(prefs.getInt("clipboard_limit", 100).toString())
         clipLimit.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) putInt("clipboard_limit", clipLimit.text.toString().toIntOrNull() ?: 100)
         }
-        val pinLimit = findViewById<TextInputEditText>(R.id.etPinLimit)
+        val pinLimit = findViewById<EditText>(R.id.etPinLimit)
         pinLimit.setText(prefs.getInt("pin_limit", 10).toString())
         pinLimit.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) putInt("pin_limit", pinLimit.text.toString().toIntOrNull() ?: 10)
