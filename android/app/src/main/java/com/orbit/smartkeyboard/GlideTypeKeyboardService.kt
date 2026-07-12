@@ -4778,7 +4778,7 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Please grant microphone permission in the app", Toast.LENGTH_LONG).show()
-                val intent = Intent(this, MainActivity::class.java).apply {
+                val intent = Intent(this, SettingsActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra("request_mic", true)
                 }
@@ -5266,7 +5266,7 @@ if (isTranslationActive && translationInputField != null) {
         } else {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "Please grant camera permission to use OCR scanning", Toast.LENGTH_LONG).show()
-                val intent = Intent(this, MainActivity::class.java).apply {
+                val intent = Intent(this, SettingsActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra("request_camera", true)
                 }

@@ -1,18 +1,91 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-  <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
-    <item name="android:enforceNavigationBarContrast" tools:targetApi="29">true</item>
-    <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
-    <item name="colorPrimary">@color/colorPrimary</item>
-    <item name="android:statusBarColor">#121212</item>
-  </style>
-  <style name="Theme.App.SplashScreen" parent="AppTheme">
-    <item name="android:windowBackground">@drawable/ic_launcher_background</item>
-  </style>
-  <style name="Theme.App.Translucent" parent="AppTheme">
-    <item name="android:windowIsTranslucent">true</item>
-    <item name="android:windowNoTitle">true</item>
-    <item name="android:windowBackground">@android:color/transparent</item>
-    <item name="android:windowContentOverlay">@null</item>
-    <item name="android:backgroundDimEnabled">false</item>
-  </style>
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
+        <item name="colorOnPrimary">@color/colorOnPrimary</item>
+        <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="colorSurface">@color/colorSurface</color>
+        <item name="colorOnSurface">@color/colorOnSurface</item>
+        <item name="android:statusBarColor">#121212</item>
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+    </style>
+    <style name="Theme.App.SplashScreen" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/ic_launcher_background</item>
+    </style>
+    <style name="Theme.App.Translucent" parent="AppTheme">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <!-- Settings screen shared styles -->
+    <style name="SectionHeader">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/colorPrimary</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:layout_marginStart">4dp</item>
+        <item name="android:layout_marginTop">16dp</item>
+        <item name="android:layout_marginBottom">8dp</item>
+    </style>
+
+    <style name="SettingsCard" parent="Widget.MaterialComponents.CardView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="app:cardCornerRadius">16dp</item>
+        <item name="app:cardElevation">2dp</item>
+        <item name="app:contentPadding">4dp</item>
+        <item name="android:layout_marginBottom">12dp</item>
+    </style>
+
+    <style name="SettingsBody">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">12dp</item>
+    </style>
+
+    <style name="RowLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+    </style>
+
+    <style name="RowControl">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+    </style>
+
+    <style name="RowSwitch">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+    </style>
+
+    <style name="RowSeek">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+    </style>
+
+    <style name="RowInput">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">6dp</item>
+        <item name="android:hint">@null</item>
+    </style>
+
+    <style name="FullButton">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+    </style>
 </resources>

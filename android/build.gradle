@@ -1,24 +1,20 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
+// Top-level build file. React Native / Expo have been removed; this is a pure
+// native Android application (the keyboard IME itself is 100% Kotlin).
 buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
-  }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.10.1'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21'
+    }
 }
 
 allprojects {
-  repositories {
-    google()
-    mavenCentral()
-    maven { url 'https://www.jitpack.io' }
-  }
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+    }
 }
-
-apply plugin: "expo-root-project"
-apply plugin: "com.facebook.react.rootproject"

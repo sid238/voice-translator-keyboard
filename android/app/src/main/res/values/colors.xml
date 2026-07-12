@@ -1,6 +1,13 @@
 <resources>
-  <color name="splashscreen_background">#121212</color>
-  <color name="iconBackground">#ffffff</color>
-  <color name="colorPrimary">#023c69</color>
-  <color name="colorPrimaryDark">#121212</color>
+    <color name="splashscreen_background">#121212</color>
+    <color name="iconBackground">#ffffff</color>
+    <color name="colorPrimary">#6750A4</color>
+    <color name="colorPrimaryDark">#4F378B</color>
+    <color name="colorPrimaryVariant">#4F378B</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <color name="colorSecondary">#625B71</color>
+    <color name="colorOnSecondary">#FFFFFF</color>
+    <color name="colorSurface">#FFFBFE</color>
+    <color name="colorOnSurface">#1C1B1F</color>
+    <color name="colorError">#B3261E</color>
 </resources>

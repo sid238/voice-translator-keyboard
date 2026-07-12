@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/colorSurface"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Status -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="2dp"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/app_name"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Keyboard status unknown"
+                    android:textSize="13sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEnable"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Enable Keyboard"
+                        android:layout_marginEnd="8dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDefault"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Set as Default"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Appearance -->
+        <TextView style="@style/SectionHeader" android:text="Appearance" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Theme" />
+                <Spinner android:id="@+id/spinnerTheme" style="@style/RowControl" />
+                <TextView style="@style/RowLabel" android:text="Adaptive theme" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAdaptive" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Keyboard effect" />
+                <Spinner android:id="@+id/spinnerEffect" style="@style/RowControl" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnPickBg" style="@style/FullButton" android:text="Choose background image" />
+                <com.google.android.material.button.MaterialButton android:id="@+id/btnClearBg" style="@style/FullButton" android:text="Remove background image" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Languages -->
+        <TextView style="@style/SectionHeader" android:text="Languages" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Default language" />
+                <Spinner android:id="@+id/spinnerLang" style="@style/RowControl" />
+                <TextView style="@style/RowLabel" android:text="Enabled languages" />
+                <LinearLayout android:id="@+id/langContainer" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Layout -->
+        <TextView style="@style/SectionHeader" android:text="Layout" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView android:id="@+id/tvHeight" style="@style/RowLabel" android:text="Height: 360 dp" />
+                <SeekBar android:id="@+id/sliderHeight" style="@style/RowSeek" android:max="250" android:progress="160" />
+                <TextView android:id="@+id/tvSpacing" style="@style/RowLabel" android:text="Key spacing: 4 dp" />
+                <SeekBar android:id="@+id/sliderSpacing" style="@style/RowSeek" android:max="12" android:progress="4" />
+                <TextView android:id="@+id/tvFont" style="@style/RowLabel" android:text="Key font size: auto" />
+                <SeekBar android:id="@+id/sliderFont" style="@style/RowSeek" android:max="28" android:progress="0" />
+                <TextView style="@style/RowLabel" android:text="Number row" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchNumberRow" style="@style/RowSwitch" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Typing -->
+        <TextView style="@style/SectionHeader" android:text="Typing" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Auto-capitalize" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoCap" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Double-space period" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchDoubleSpace" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Suggestions" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSuggestions" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Auto-correct" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchAutoCorrect" style="@style/RowSwitch" />
+                <TextView android:id="@+id/tvLongPress" style="@style/RowLabel" android:text="Long-press delay: 300 ms" />
+                <SeekBar android:id="@+id/sliderLongPress" style="@style/RowSeek" android:max="600" android:progress="300" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Feedback -->
+        <TextView style="@style/SectionHeader" android:text="Feedback" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Sound" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchSound" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Vibration" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchVibration" style="@style/RowSwitch" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Add-ons -->
+        <TextView style="@style/SectionHeader" android:text="Add-ons" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Voice text" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchVoice" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Translate" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchTranslate" style="@style/RowSwitch" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Clipboard -->
+        <TextView style="@style/SectionHeader" android:text="Clipboard" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Clipboard timeline" />
+                <com.google.android.material.switchmaterial.SwitchMaterial android:id="@+id/switchClipboardTimeline" style="@style/RowSwitch" />
+                <TextView style="@style/RowLabel" android:text="Clipboard limit" />
+                <com.google.android.material.materialtextfield.TextInputLayout style="@style/RowInput" android:hint="100">
+                    <com.google.android.material.materialtextfield.TextInputEditText
+                        android:id="@+id/etClipLimit"
+                        android:inputType="number"
+                        android:text="100" />
+                </com.google.android.material.materialtextfield.TextInputLayout>
+                <TextView style="@style/RowLabel" android:text="Pin limit" />
+                <com.google.android.material.materialtextfield.TextInputLayout style="@style/RowInput" android:hint="10">
+                    <com.google.android.material.materialtextfield.TextInputEditText
+                        android:id="@+id/etPinLimit"
+                        android:inputType="number"
+                        android:text="10" />
+                </com.google.android.material.materialtextfield.TextInputLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Emoji & App theme -->
+        <TextView style="@style/SectionHeader" android:text="Emoji &amp; Interface" />
+        <com.google.android.material.card.MaterialCardView style="@style/SettingsCard">
+            <LinearLayout style="@style/SettingsBody">
+                <TextView style="@style/RowLabel" android:text="Emoji scale" />
+                <Spinner android:id="@+id/spinnerEmoji" style="@style/RowControl" />
+                <TextView style="@style/RowLabel" android:text="App theme" />
+                <Spinner android:id="@+id/spinnerAppTheme" style="@style/RowControl" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <View android:layout_width="match_parent" android:layout_height="24dp" />
+    </LinearLayout>
+</ScrollView>
