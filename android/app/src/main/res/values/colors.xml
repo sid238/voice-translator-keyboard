@@ -1,5 +1,5 @@
 <resources>
-    <color name="splashscreen_background">#121212</color>
+    <color name="splashscreen_background">#141218</color>
     <color name="iconBackground">#ffffff</color>
     <color name="colorPrimary">#6750A4</color>
     <color name="colorPrimaryDark">#4F378B</color>
@@ -7,7 +7,10 @@
     <color name="colorOnPrimary">#FFFFFF</color>
     <color name="colorSecondary">#625B71</color>
     <color name="colorOnSecondary">#FFFFFF</color>
-    <color name="colorSurface">#FFFBFE</color>
+    <color name="colorSurface">#FEF7FF</color>
+    <color name="colorSurfaceCard">#F3EDF7</color>
     <color name="colorOnSurface">#1C1B1F</color>
+    <color name="colorOnSurfaceVariant">#49454F</color>
+    <color name="colorOutline">#E7E0EC</color>
     <color name="colorError">#B3261E</color>
 </resources>

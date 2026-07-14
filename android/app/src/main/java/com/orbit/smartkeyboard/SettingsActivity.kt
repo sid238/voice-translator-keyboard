@@ -1,6 +1,5 @@
 package com.orbit.smartkeyboard
 
-import android.app.Activity
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -15,6 +14,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.switchmaterial.SwitchMaterial
 import java.io.File
 import java.io.FileOutputStream
@@ -39,25 +42,25 @@ class SettingsActivity : AppCompatActivity() {
 
     private val themeOptions = listOf(
         "dynamic" to "Dynamic (Material You)",
+        "light" to "Light Theme",
+        "dark" to "Dark Theme",
         "purple" to "Purple",
         "blue" to "Blue",
         "green" to "Green",
-        "red" to "Red",
-        "dark" to "Dark"
+        "red" to "Red"
     )
 
     private val effectOptions = listOf(
-        "none" to "None",
-        "glow" to "Glow",
-        "ripple" to "Ripple",
-        "particles" to "Particles"
+        "none" to "None (Disabled)",
+        "matrix" to "Matrix Rain Effect",
+        "neo_glow" to "Neo Glow Effect",
+        "water" to "Water Ripple Effect",
+        "fire" to "Fire Flames Effect",
+        "galaxy" to "Galaxy Particles",
+        "mechanical_flash" to "Mechanical Flash"
     )
 
-    private val emojiScaleOptions = listOf(
-        "small" to "Small",
-        "medium" to "Medium",
-        "large" to "Large"
-    )
+
 
     // Image picker for custom background
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -77,7 +80,27 @@ class SettingsActivity : AppCompatActivity() {
         )
 
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_settings)
+
+        // Handle window insets for status bar and soft keyboard IME elevation
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.settingsRoot)) { _, insets ->
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val sysBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            val bottomMargin = Math.max(imeHeight, sysBottom)
+
+            val rootLayout = findViewById<android.view.View>(R.id.rootLayout)
+            rootLayout?.setPadding(rootLayout.paddingLeft, statusBarHeight + dpToPx(8), rootLayout.paddingRight, dpToPx(84) + bottomMargin)
+
+            val bottomTest = findViewById<android.view.View>(R.id.bottomTestContainer)
+            val params = bottomTest?.layoutParams as? android.widget.RelativeLayout.LayoutParams
+            if (bottomTest != null && params != null) {
+                params.setMargins(dpToPx(12), dpToPx(8), dpToPx(12), bottomMargin + dpToPx(8))
+                bottomTest.layoutParams = params
+            }
+            insets
+        }
 
         setupStatus()
         setupAppearance()
@@ -89,6 +112,15 @@ class SettingsActivity : AppCompatActivity() {
         setupClipboard()
         setupEmojiAndTheme()
         refreshStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 
     private fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
@@ -108,8 +140,8 @@ class SettingsActivity : AppCompatActivity() {
 
     // ---------- Status ----------
     private fun setupStatus() {
-        findViewById<Button>(R.id.btnEnable).setOnClickListener { openKeyboardSettings() }
-        findViewById<Button>(R.id.btnDefault).setOnClickListener { showKeyboardPicker() }
+        findViewById<MaterialButton>(R.id.btnEnable).setOnClickListener { openKeyboardSettings() }
+        findViewById<MaterialButton>(R.id.btnDefault).setOnClickListener { showKeyboardPicker() }
     }
 
     private fun refreshStatus() {
@@ -118,12 +150,36 @@ class SettingsActivity : AppCompatActivity() {
         val enabled = imm.enabledInputMethodList.any { it.id == targetId }
         val currentIME = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
         val isDefault = currentIME != null && currentIME == targetId
-        val text = when {
-            isDefault -> "Enabled and set as default"
-            enabled -> "Enabled (not default) — tap Set as Default"
-            else -> "Not enabled — tap Enable Keyboard"
+        
+        val tvStatus = findViewById<TextView>(R.id.tvStatus)
+        val btnEnable = findViewById<MaterialButton>(R.id.btnEnable)
+        val btnDefault = findViewById<MaterialButton>(R.id.btnDefault)
+
+        tvStatus.text = when {
+            isDefault -> "✓ Active and set as default keyboard"
+            enabled -> "✓ Enabled (Tap 'Set as Default' to select Orbit Keyboard)"
+            else -> "Not enabled — Tap 'Enable Keyboard' to get started"
         }
-        findViewById<TextView>(R.id.tvStatus).text = text
+
+        if (enabled) {
+            btnEnable.text = "✓ Enabled"
+            btnEnable.isEnabled = false
+            btnEnable.alpha = 0.6f
+        } else {
+            btnEnable.text = "Enable Keyboard"
+            btnEnable.isEnabled = true
+            btnEnable.alpha = 1.0f
+        }
+
+        if (isDefault) {
+            btnDefault.text = "✓ Active Default"
+            btnDefault.isEnabled = false
+            btnDefault.alpha = 0.6f
+        } else {
+            btnDefault.text = "Set as Default"
+            btnDefault.isEnabled = enabled
+            btnDefault.alpha = if (enabled) 1.0f else 0.5f
+        }
     }
 
     private fun openKeyboardSettings() {
@@ -157,8 +213,8 @@ class SettingsActivity : AppCompatActivity() {
             putString("keyboard_effect", effectOptions[pos].first)
         }
 
-        findViewById<Button>(R.id.btnPickBg).setOnClickListener { pickImage.launch("image/*") }
-        findViewById<Button>(R.id.btnClearBg).setOnClickListener { clearThemeImage() }
+        findViewById<MaterialButton>(R.id.btnPickBg).setOnClickListener { pickImage.launch("image/*") }
+        findViewById<MaterialButton>(R.id.btnClearBg).setOnClickListener { clearThemeImage() }
     }
 
     private fun copyThemeImage(uri: Uri) {
@@ -203,6 +259,8 @@ class SettingsActivity : AppCompatActivity() {
         languageOptions.forEach { (code, label) ->
             val cb = CheckBox(this).apply {
                 text = label
+                textSize = 14f
+                setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
                 isChecked = savedList.contains(code)
                 setOnCheckedChangeListener { _, checked ->
                     if (checked) savedList.add(code) else savedList.remove(code)
@@ -218,12 +276,12 @@ class SettingsActivity : AppCompatActivity() {
     private fun setupLayout() {
         val sliderHeight = findViewById<SeekBar>(R.id.sliderHeight)
         val tvHeight = findViewById<TextView>(R.id.tvHeight)
-        val h = prefs.getInt("keyboard_height_dp", 360)
+        val h = prefs.getInt("keyboard_height_dp", 260)
         sliderHeight.progress = (h - 200).coerceIn(0, 250)
-        tvHeight.text = "Height: $h dp"
+        tvHeight.text = "$h dp"
         sliderHeight.setOnSeekBarChangeListener(seek { v ->
             val value = v + 200
-            tvHeight.text = "Height: $value dp"
+            tvHeight.text = "$value dp"
             putInt("keyboard_height_dp", value)
         })
 
@@ -231,9 +289,9 @@ class SettingsActivity : AppCompatActivity() {
         val tvSpacing = findViewById<TextView>(R.id.tvSpacing)
         val sp = prefs.getInt("key_spacing_dp", 4)
         sliderSpacing.progress = sp.coerceIn(0, 12)
-        tvSpacing.text = "Key spacing: $sp dp"
+        tvSpacing.text = "$sp dp"
         sliderSpacing.setOnSeekBarChangeListener(seek { v ->
-            tvSpacing.text = "Key spacing: $v dp"
+            tvSpacing.text = "$v dp"
             putInt("key_spacing_dp", v)
         })
 
@@ -241,9 +299,9 @@ class SettingsActivity : AppCompatActivity() {
         val tvFont = findViewById<TextView>(R.id.tvFont)
         val fs = prefs.getInt("key_font_size_sp", 0)
         sliderFont.progress = fs.coerceIn(0, 28)
-        tvFont.text = if (fs == 0) "Key font size: auto" else "Key font size: $fs sp"
+        tvFont.text = if (fs == 0) "Auto" else "$fs sp"
         sliderFont.setOnSeekBarChangeListener(seek { v ->
-            tvFont.text = if (v == 0) "Key font size: auto" else "Key font size: $v sp"
+            tvFont.text = if (v == 0) "Auto" else "$v sp"
             putInt("key_font_size_sp", v)
         })
 
@@ -263,10 +321,10 @@ class SettingsActivity : AppCompatActivity() {
         val tv = findViewById<TextView>(R.id.tvLongPress)
         val delay = prefs.getInt("long_press_delay_ms", 300)
         slider.progress = (delay - 100).coerceIn(0, 600)
-        tv.text = "Long-press delay: $delay ms"
+        tv.text = "$delay ms"
         slider.setOnSeekBarChangeListener(seek { v ->
             val value = v + 100
-            tv.text = "Long-press delay: $value ms"
+            tv.text = "$value ms"
             putInt("long_press_delay_ms", value)
         })
     }
@@ -298,28 +356,24 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    // ---------- Emoji & App theme ----------
+    // ---------- Interface Theme ----------
     private fun setupEmojiAndTheme() {
-        val emojiSpinner = findViewById<Spinner>(R.id.spinnerEmoji)
-        emojiSpinner.adapter = spinnerAdapter(emojiScaleOptions.map { it.second })
-        val savedEmoji = prefs.getString("emoji_scale", "medium") ?: "medium"
-        emojiSpinner.setSelection(emojiScaleOptions.indexOfFirst { it.first == savedEmoji }.coerceAtLeast(0))
-        emojiSpinner.onItemSelectedListener = simple { pos ->
-            putString("emoji_scale", emojiScaleOptions[pos].first)
-        }
-
         val appThemeSpinner = findViewById<Spinner>(R.id.spinnerAppTheme)
-        val appOptions = listOf("dark" to "Dark", "light" to "Light")
+        val appOptions = listOf("dark" to "Dark Mode", "light" to "Light Mode")
         appThemeSpinner.adapter = spinnerAdapter(appOptions.map { it.second })
         val savedApp = prefs.getString("app_theme", "dark") ?: "dark"
         appThemeSpinner.setSelection(appOptions.indexOfFirst { it.first == savedApp }.coerceAtLeast(0))
+        var firstSelection = true
         appThemeSpinner.onItemSelectedListener = simple { pos ->
+            if (firstSelection) { firstSelection = false; return@simple }
             val value = appOptions[pos].first
             putString("app_theme", value)
             AppCompatDelegate.setDefaultNightMode(
                 if (value == "light") AppCompatDelegate.MODE_NIGHT_NO
                 else AppCompatDelegate.MODE_NIGHT_YES
             )
+            // Recreate to apply theme immediately
+            recreate()
         }
     }
 

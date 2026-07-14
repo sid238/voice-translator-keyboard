@@ -1,0 +1,203 @@
+================================================================================
+ORBIT KEYBOARD (com.orbit.smartkeyboard) — FEATURE & API SPECIFICATION
+================================================================================
+A complete description of the app, its features, and every API/library it uses.
+Use this as a reference / prompt to understand or rebuild the project.
+
+--------------------------------------------------------------------------------
+1. APP OVERVIEW
+--------------------------------------------------------------------------------
+- Name:            Orbit Keyboard (IME label "Orbit Keyboard")
+- Package:         com.orbit.smartkeyboard
+- Platform:        Native Android (Kotlin), NO React Native / NO Expo
+- Type:            Custom soft keyboard (Input Method Editor / IME)
+- Language:        Kotlin 2.0.21, JVM target 17
+- Min/Target SDK:  24 / 35 (compileSdk 35)
+- Version:         1.0.0 (versionCode 1)
+- Build:           Gradle, splits into armeabi-v7a, arm64-v8a, universal APKs
+- Entry points:    GlideTypeKeyboardService (IME), SettingsActivity (launcher),
+                   OcrGalleryActivity, FileProvider, OrbitApplication
+
+--------------------------------------------------------------------------------
+2. CORE KEYBOARD FEATURES
+--------------------------------------------------------------------------------
+- Custom on-screen QWERTY keyboard built entirely with native Views (no
+  system KeyboardView), drawn in Kotlin.
+- Multiple keyboard VIEW MODES (enum ViewMode):
+    * QWERTY      - main alphabet layout (with optional number row)
+    * SYMBOLS     - symbols / punctuation layout (?123, =/\, etc.)
+    * EMOJIS      - emoji picker with categories + recents
+    * CLIPBOARD   - clipboard history manager (text + images, pin support)
+    * PC_SHORTCUTS- desktop-style Ctrl shortcuts (select all / copy / paste /
+                    undo / redo / arrow keys) shown in landscape
+    * HINDI       - Devanagari (Hindi) layout
+    * OCR         - camera / gallery text & barcode capture mode
+- Key press feedback: haptic vibration (Vibrator), optional key sound,
+  Material ripple, scale-down press animation (0.98).
+- Word / text suggestions toggle (suggestionsEnabled).
+- Auto-capitalization (autoCapEnabled).
+- Double-space → period (doubleSpacePeriodEnabled).
+- Optional dedicated number row (numberRowEnabled, default true).
+- Key hint characters shown in top-right corner of each key (Gboard style).
+- Adjustable keyboard height (size adjustment dialog → keyboardHeightDp).
+- Spacebar language switch / current language indicator.
+
+--------------------------------------------------------------------------------
+3. TEXT STYLING / FONT ENGINE (KeyboardFont enum — 50+ styles)
+--------------------------------------------------------------------------------
+Live text transformation applied to typed output, e.g.:
+  NORMAL, BOLD_SERIF, ITALIC_SERIF, BOLD_ITALIC_SERIF, SCRIPT, BOLD_SCRIPT,
+  GOTHIC, BOLD_GOTHIC, OUTLINE, TYPEWRITER, CIRCLED, NEGATIVE_CIRCLED,
+  SQUARED, NEGATIVE_SQUARED, FULLWIDTH, SMALL_CAPS, PARENTHESIZED, SUBSCRIPT,
+  SUPERSCRIPT, STRIKETHROUGH, SLASHED, UNDERLINE, DOUBLE_UNDERLINE, OVERLINE,
+  DOTTED, WAVY, ZALGO, INVERTED, REVERSED, MORSE, FANCY_BRACKETS, FANCY_ARROWS,
+  FANCY_HEARTS, FANCY_STARS, FANCY_SPARKLES, FANCY_SMILEY, MATH_BOLD_SANS,
+  MATH_ITALIC_SANS, MATH_BOLD_ITALIC_SANS, CURSIVE, PARENTHESIZED_DIGITS,
+  NEGATIVE_CIRCLED_DIGITS, DOUBLE_PARENTHESES, CYBER, STARLIGHT, DIAMOND,
+  TSUNAMI, DOUBLE_SLASH, SLASH_BOX, SHARP, CROSSED.
+Selected via the "Text Formatting" (ic_font) toolbar button.
+
+--------------------------------------------------------------------------------
+4. ADD-ON FEATURES (toolbar toggles)
+--------------------------------------------------------------------------------
+4.1 AI CHAT  (isAiChatActive, addon enabled by default)
+     - Floating AI assistant popup rendered as a system overlay
+       (SYSTEM_ALERT_WINDOW / TYPE_APPLICATION_OVERLAY) above any app.
+     - Sends conversation messages to a third-party proxy and streams a reply.
+     - Requires "Display over other apps" permission when first enabled.
+     - Endpoint: https://yenus.created.app/integrations/google-gemini-1-5-flash
+       (proxy wrapping Google Gemini 1.5 Flash). POST JSON {messages, stream}.
+     - Required headers: origin/referer = https://yenus.created.app,
+       x-createxyz-project-id, User-Agent spoof (Chrome Mobile).
+
+4.2 TRANSLATION  (isTranslationActive, translationFeatureEnabled, default true)
+     - Translate typed text inline; shows translation overlay.
+     - Requires internet (toast if offline).
+     - Endpoint: https://translate-pa.googleapis.com/v1/translateHtml
+       (unofficial Google Translate endpoint) POST application/json+protobuf
+       with header x-goog-api-key (embedded key).
+     - Supported languages (code): English en, Hindi hi (default target),
+       Spanish es, Bengali bn, Telugu te, Marathi mr, Tamil ta,
+       Gujarati gu, Kannada kn, Malayalam ml.
+     - User can pick source/target from `languages` list; persisted as
+       `selected_languages`.
+
+4.3 VOICE DICTATION  (voiceDictationEnabled, default true)
+     - On-device / cloud speech-to-text via Android SpeechRecognizer.
+     - Uses RecognizerIntent + RecognitionListener; mic permission required.
+     - Shows a live VoiceWaveView animation while listening; stop button.
+     - Errors mapped: ERROR_AUDIO, ERROR_CLIENT, ERROR_INSUFFICIENT_PERMISSIONS,
+       ERROR_NETWORK, etc.
+
+4.4 OCR / CAMERA SCAN  (ViewMode.OCR)
+     - Real-time camera text recognition using CameraX + ML Kit Text Recognition.
+     - Also barcode / QR scanning via ML Kit Barcode Scanning.
+     - Gallery image OCR via OcrGalleryActivity (FileProvider image pick).
+     - Detected text / scanned URL inserted into the current field.
+     - Requires CAMERA permission; captures via ImageCapture.
+
+4.5 CLIPBOARD MANAGER  (ViewMode.CLIPBOARD)
+     - Persists clipboard history (text + image URI) in shared prefs
+       (PREF_KEY_CLIPBOARD = "clipboard_history").
+     - Pin items, recent-first list, tap to paste.
+     - Optional "clipboard timeline" feature (clipboardTimelineEnabled).
+
+--------------------------------------------------------------------------------
+5. THEMES & APPEARANCE
+--------------------------------------------------------------------------------
+- Theme names: "dynamic" (Material You, default), "dark", "blue", "green",
+  "red" (legacy default), "amoled" (if present).
+- "dynamic" uses Android 12+ Material You dynamic color tokens
+  (surface, surfaceContainer, surfaceContainerHigh, primaryContainer,
+   onPrimaryContainer, secondaryContainer, outlineVariant, onSurface).
+- adaptiveThemeEnabled: blends wallpaper/accent automatically.
+- Custom background image theme (themeImagePath) supported.
+- Material You color fields: matSurface, matSurfaceLow, matSurfaceHigh,
+  matPrimary, matOnPrimary, matPrimaryContainer, matOnPrimaryContainer,
+  matSecondaryContainer, matOnSecondaryContainer, matOutlineVariant,
+  matOnSurface, matOnSurfaceVariant, themeAccentColor, themeTextColor,
+  themeSpecialKeyBg, themeSpecialKeyTextColor.
+- Keyboard visual effects: keyboardEffect ("none" default, plus effects
+  like sparkle, etc.).
+
+--------------------------------------------------------------------------------
+6. ANDROID PERMISSIONS (AndroidManifest.xml)
+--------------------------------------------------------------------------------
+- INTERNET                     (AI, translation, voice)
+- RECORD_AUDIO                 (voice dictation)
+- CAMERA                       (OCR scan)
+- VIBRATE                      (haptic feedback)
+- SYSTEM_ALERT_WINDOW          (AI chat overlay)
+- FOREGROUND_SERVICE           (background voice/AI tasks)
+- READ_EXTERNAL_STORAGE / WRITE_EXTERNAL_STORAGE  (clipboard images, themes)
+- (queries) android.speech.RecognitionService + https BROWSABLE intent
+
+--------------------------------------------------------------------------------
+7. ANDROID / SYSTEM APIs USED
+--------------------------------------------------------------------------------
+- android.inputmethodservice.InputMethodService  (IME core)
+- android.view.inputmethod.InputConnection        (commit text, key events)
+- android.view.WindowManager / LayoutParams TYPE_APPLICATION_OVERLAY (AI popup)
+- android.os.Vibrator + VibrationEffect            (haptics)
+- android.speech.SpeechRecognizer / RecognizerIntent / RecognitionListener
+- androidx.camera.* (CameraX): ProcessCameraProvider, PreviewView,
+  ImageCapture, camera-lifecycle
+- com.google.mlkit.vision.text + barcode-scanning (TextRecognizer, InputImage)
+- android.provider.Settings.canDrawOverlays / ACTION_INPUT_METHOD_SETTINGS
+- android.content.ClipboardManager / ClipData      (clipboard)
+- androidx.core.content.FileProvider              (camera/gallery image sharing)
+- android.media.AudioManager / sound pool          (key click sound)
+- android.view.animation (AccelerateDecelerateInterpolator) (press anim)
+- android.graphics (Typeface, GradientDrawable, RippleDrawable, Canvas)
+- android.net.Uri, ContentResolver                 (image/file access)
+- SharedPreferences ("glidetype_keyboard_prefs")   (all settings/persistence)
+- Material 3 components (com.google.android.material.*) in Settings UI
+
+--------------------------------------------------------------------------------
+8. EXTERNAL NETWORK ENDPOINTS (used APIs)
+--------------------------------------------------------------------------------
+- AI chat:        POST https://yenus.created.app/integrations/google-gemini-1-5-flash
+                  (proxy → Google Gemini 1.5 Flash). JSON {messages, stream:false}.
+- Translation:    POST https://translate-pa.googleapis.com/v1/translateHtml
+                  (unofficial Google Translate, json+protobuf, x-goog-api-key).
+- Voice/translate may also use device Google Speech/Translate services.
+- Link open:      typed/recognized URLs opened via https BROWSABLE intent.
+
+--------------------------------------------------------------------------------
+9. THIRD-PARTY LIBRARIES / DEPENDENCIES
+--------------------------------------------------------------------------------
+- Kotlin stdlib 2.0.21
+- androidx.core:core-ktx 1.13.1
+- androidx.appcompat:appcompat 1.7.0
+- androidx.constraintlayout 2.1.4
+- androidx.lifecycle (runtime-ktx, viewmodel-ktx) 2.8.7
+- com.google.android.material:material 1.12.0        (Material 3 / Material You)
+- CameraX 1.3.4: camera-core, camera-camera2,
+  camera-lifecycle, camera-view
+- Google Play Services ML Kit:
+    play-services-mlkit-text-recognition 19.0.0
+    play-services-mlkit-barcode-scanning 18.3.0
+- Native lib: liborbitnative / libimage_processing_util_jni.so
+  (image processing JNI helper, built for armeabi-v7a + arm64-v8a)
+
+--------------------------------------------------------------------------------
+10. SETTINGS / PREFERENCE KEYS (SharedPreferences: glidetype_keyboard_prefs)
+--------------------------------------------------------------------------------
+vibration_enabled, sound_enabled, number_row_enabled, adaptive_theme,
+theme, addon_translate, addon_voice_text, auto_cap, double_space_period,
+suggestions_enabled, keyboard_effect, clipboard_timeline, ocr_image_path,
+selected_languages, theme_image_path, recent_emojis, clipboard_history,
+plus layout/state persistence.
+
+--------------------------------------------------------------------------------
+11. NOTES / KNOWN DETAILS
+--------------------------------------------------------------------------------
+- Gesture / glide (swipe) typing was REMOVED (comment: "gesture/glide typing
+  removed"); the app name "GlideType" is historical.
+- Debug signing uses local debug.keystore (alias androiddebugkey).
+- APK must be the arm64-v8a (or universal) variant on 64-bit-only phones;
+  the armeabi-v7a (32-bit) build will NOT install on such devices.
+- Crash diagnostics: OrbitApplication installs an uncaught-exception handler
+  in attachBaseContext; CrashLogger writes to internal storage +
+  /data/local/tmp/crash_orbit.log and the SettingsActivity shows/copies it.
+================================================================================

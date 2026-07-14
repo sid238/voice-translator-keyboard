@@ -53,6 +53,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
     init {
         isClickable = false
         isFocusable = false
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     override fun dispatchTouchEvent(event: MotionEvent?): Boolean {
@@ -94,9 +95,9 @@ class KeyboardEffectsView @JvmOverloads constructor(
     fun triggerEffect(x: Float, y: Float, width: Int, height: Int) {
         when (effectType) {
             "fire" -> { fireParticles.clear(); spawnFire(x, y) }
-            "water_ripple" -> { ripples.clear(); spawnRipple(x, y) }
-            "matrix_rain" -> { matrixStreams.clear(); spawnMatrix(x, y, width, height) }
-            "galaxy" -> { galaxyParticles.clear(); spawnGalaxy(x, y) }
+            "water", "water_ripple" -> { ripples.clear(); spawnRipple(x, y) }
+            "matrix", "matrix_rain" -> { matrixStreams.clear(); spawnMatrix(x, y, width, height) }
+            "neo_glow", "galaxy" -> { galaxyParticles.clear(); spawnGalaxy(x, y) }
             "mechanical_flash" -> { mechanicalFlashes.clear(); spawnMechanicalFlash(x, y, width, height) }
             "neon_trail" -> spawnNeonTap(x, y)
         }
@@ -263,19 +264,19 @@ class KeyboardEffectsView @JvmOverloads constructor(
                         spawnFire(pressX, pressY)
                     }
                 }
-                "water_ripple" -> {
+                "water", "water_ripple" -> {
                     // Keep spawning water droplets while pressed
                     if (ripples.size < 80) {
                         spawnRipple(pressX, pressY)
                     }
                 }
-                "matrix_rain" -> {
+                "matrix", "matrix_rain" -> {
                     // Keep respawning matrix streams while pressed
                     if (matrixStreams.isEmpty() || matrixStreams.all { it.alpha <= 50 }) {
                         spawnMatrix(pressX, pressY, pressWidth, pressHeight)
                     }
                 }
-                "galaxy" -> {
+                "neo_glow", "galaxy" -> {
                     // Keep spawning galaxy particles while pressed
                     if (galaxyParticles.size < 40) {
                         spawnGalaxy(pressX, pressY)
@@ -365,6 +366,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
         // 3. Draw Water Droplets
         if (ripples.isNotEmpty()) {
             needsRedraw = true
+            val newSplashes = mutableListOf<WaterRipple>()
             val iterator = ripples.iterator()
             while (iterator.hasNext()) {
                 val r = iterator.next()
@@ -377,7 +379,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
                             val splashY = r.y + random.nextFloat() * 4f
                             val splashVx = -2f + random.nextFloat() * 4f
                             val splashVy = -3f - random.nextFloat() * 3f
-                            ripples.add(WaterRipple(splashX, splashY, splashVx, splashVy, r.color, r.size * 0.4f, 200f, 200f, false))
+                            newSplashes.add(WaterRipple(splashX, splashY, splashVx, splashVy, r.color, r.size * 0.4f, 200f, 200f, false))
                         }
                     }
                     iterator.remove()
@@ -397,6 +399,9 @@ class KeyboardEffectsView @JvmOverloads constructor(
                 paint.maskFilter = BlurMaskFilter(3f, BlurMaskFilter.Blur.NORMAL)
                 canvas.drawCircle(r.x, r.y, r.size * (0.5f + ratio * 0.5f), paint)
                 paint.maskFilter = null
+            }
+            if (newSplashes.isNotEmpty()) {
+                ripples.addAll(newSplashes)
             }
             paint.style = Paint.Style.FILL
         }
@@ -438,6 +443,13 @@ class KeyboardEffectsView @JvmOverloads constructor(
                         s.chars[(s.activeCharIndex + j) % s.chars.size]
                     }
 
+                    val strokePaint = Paint(paint).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = 4f
+                        color = Color.argb(itemAlpha, 0, 15, 0)
+                        maskFilter = null
+                    }
+                    canvas.drawText(displayChar, s.x, charY, strokePaint)
                     canvas.drawText(displayChar, s.x, charY, paint)
                     paint.maskFilter = null
                 }
@@ -495,7 +507,7 @@ class KeyboardEffectsView @JvmOverloads constructor(
                     continue
                 }
 
-                val radius = (1f - f.alpha / 255f) * f.keyWidth * 1.5f
+                val radius = ((1f - f.alpha / 255f) * f.keyWidth * 1.5f).coerceAtLeast(1f)
                 val radialGradient = RadialGradient(
                     f.x, f.y, radius,
                     intArrayOf(Color.argb(f.alpha, 255, 255, 255), Color.argb(f.alpha / 2, 255, 240, 200), Color.TRANSPARENT),

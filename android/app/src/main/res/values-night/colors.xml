@@ -1,1 +1,16 @@
-<resources/>
+<resources>
+    <color name="splashscreen_background">#141218</color>
+    <color name="iconBackground">#ffffff</color>
+    <color name="colorPrimary">#D0BCFF</color>
+    <color name="colorPrimaryDark">#381E72</color>
+    <color name="colorPrimaryVariant">#381E72</color>
+    <color name="colorOnPrimary">#381E72</color>
+    <color name="colorSecondary">#CCC2DC</color>
+    <color name="colorOnSecondary">#332D41</color>
+    <color name="colorSurface">#141218</color>
+    <color name="colorSurfaceCard">#211F26</color>
+    <color name="colorOnSurface">#E6E1E5</color>
+    <color name="colorOnSurfaceVariant">#CAC4D0</color>
+    <color name="colorOutline">#36343B</color>
+    <color name="colorError">#F2B8B5</color>
+</resources>

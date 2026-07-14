@@ -74,7 +74,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var translationInputField: EditText? = null
     // grammar now uses currentInputConnection directly
     private var longPressDelayMs = 300
-    private var keyboardHeightDp = 360 // Default keyboard height (~54dp keys with 5 rows)
+    private var keyboardHeightDp = 260 // Sleeker compact keyboard height (~42-45dp keys)
     private var isSizeAdjustActive = false
     private var keyboardWidthPercent = 100
     private var keyboardGravity = Gravity.CENTER_HORIZONTAL
@@ -111,6 +111,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     // gesture/glide typing removed
     private var themeName = "dynamic"
     private var translationFeatureEnabled = true
+    private var autoCorrectEnabled = true
+    // Tracks words that were already auto-corrected so re-editing+space doesn't re-correct them
+    private val autoCorrectBlacklist = mutableSetOf<String>()
 
     private fun isNetworkAvailable(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return true
@@ -140,6 +143,11 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var matOnSurface = Color.WHITE
     private var matOnSurfaceVariant = Color.parseColor("#CAC4D0")
     private var matOutlineVariant = Color.parseColor("#49454F")
+    private var matPrimaryContainer = Color.parseColor("#7C8CF8")
+    private var matOnPrimaryContainer = Color.WHITE
+    private var matSecondaryContainer = Color.parseColor("#7C8CF8")
+    private var matOnSecondaryContainer = Color.WHITE
+    private var themeSpecialKeyTextColor = Color.WHITE
 
     // Effects & Timeline & OCR settings
     private var keyboardEffect = "none"
@@ -190,6 +198,8 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     private var currentAiResponse: String? = null
     private var isAiLoading = false
     private var aiInputField: EditText? = null
+    private var savedAiInputText: String = ""
+    private var savedTranslationInputText: String = ""
     private var internalEditTextFocused: EditText? = null
     private val aiChatMessages = mutableListOf<Pair<Boolean, String>>()
 
@@ -335,6 +345,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     )
 
     override fun onCreate() {
+        instance = this
         CrashLogger.install(this)
         super.onCreate()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -351,11 +362,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
     }
 
     override fun onEvaluateFullscreenMode(): Boolean {
-        // In landscape, go fullscreen and show the extracted text field above the
-        // keyboard (just like Gboard) so the user can see what they type and the
-        // app field stays visible. Backspace/input flow through the live
-        // InputConnection, so everything keeps working.
-        return resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        return false
     }
 
     override fun onCreateExtractTextView(): View {
@@ -442,6 +449,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         handler.removeCallbacks(selectedTextCheckRunnable)
         handler.postDelayed(selectedTextCheckRunnable, 300)
+        updateShiftStateBasedOnContext()
     }
 
     private val selectedTextCheckRunnable = Runnable {
@@ -529,7 +537,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun loadPreferences() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 360)
+        keyboardHeightDp = prefs.getInt(PREF_KEY_HEIGHT, 260)
         keyboardWidthPercent = prefs.getInt("keyboard_width_percent", 100)
         keyboardGravity = prefs.getInt("keyboard_gravity", Gravity.CENTER_HORIZONTAL)
         
@@ -546,6 +554,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         autoCapEnabled = prefs.getBoolean("auto_cap", true)
         doubleSpacePeriodEnabled = prefs.getBoolean("double_space_period", true)
         suggestionsEnabled = prefs.getBoolean("suggestions_enabled", true)
+        autoCorrectEnabled = prefs.getBoolean("auto_correct_enabled", true)
         keySpacingDp = prefs.getInt("key_spacing_dp", 4)
         keyFontSizeSp = prefs.getInt("key_font_size_sp", 0)
 
@@ -605,38 +614,49 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         themeTextColor = Color.WHITE
         themeHintColor = "#7AFFFFFF"
         when (themeName) {
+            "light" -> {
+                themeBgColor = "#F2F3F7"
+                themeAccentColor = "#0078FF"
+                themeSpecialKeyBg = "#E4E6ED"
+                themeRegularKeyBg = "#FFFFFF"
+                themeToolbarBg = "#E9EBEF"
+                themeTextColor = Color.BLACK
+                themeHintColor = "#7A000000"
+            }
+            "dark" -> {
+                themeBgColor = "#121216"
+                themeAccentColor = "#3B82F6"
+                themeSpecialKeyBg = "#24242C"
+                themeRegularKeyBg = "#1C1C24"
+                themeToolbarBg = "#181820"
+                themeTextColor = Color.WHITE
+                themeHintColor = "#7AFFFFFF"
+            }
             "purple" -> {
                 themeBgColor = "#121212"
                 themeAccentColor = "#8A2BE2"
-                themeSpecialKeyBg = "#2E2E2E"
+                themeSpecialKeyBg = "#251E33"
                 themeRegularKeyBg = "#1F1F1F"
                 themeToolbarBg = "#1A1A1A"
-            }
-            "dark" -> {
-                themeBgColor = "#000000"
-                themeAccentColor = "#333333"
-                themeSpecialKeyBg = "#1C1C1C"
-                themeRegularKeyBg = "#0F0F0F"
-                themeToolbarBg = "#0A0A0A"
             }
             "blue" -> {
                 themeBgColor = "#0B0F19"
                 themeAccentColor = "#0078FF"
-                themeSpecialKeyBg = "#1E293B"
+                themeSpecialKeyBg = "#162032"
                 themeRegularKeyBg = "#111827"
                 themeToolbarBg = "#0F172A"
             }
             "red" -> {
                 themeBgColor = "#0B0B0F"
                 themeAccentColor = "#FF0055"
-                themeSpecialKeyBg = "#1E1F29"
+                themeSpecialKeyBg = "#1D1722"
                 themeRegularKeyBg = "#12131C"
                 themeToolbarBg = "#0F1016"
             }
             "green" -> {
                 themeBgColor = "#081C15"
                 themeAccentColor = "#2D6A4F"
-                themeSpecialKeyBg = "#1B4332"
+                themeSpecialKeyBg = "#132E22"
                 themeRegularKeyBg = "#0F2F20"
                 themeToolbarBg = "#0B251A"
             }
@@ -666,16 +686,17 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 }
 
                 themeBgColor = String.format("#%06X", 0xFFFFFF and matSurfaceLow)
-                themeAccentColor = String.format("#%06X", 0xFFFFFF and matPrimary)
-                themeSpecialKeyBg = String.format("#%06X", 0xFFFFFF and matSurfaceHigh)
-                themeRegularKeyBg = String.format("#%06X", 0xFFFFFF and matSurface)
+                themeAccentColor = String.format("#%06X", 0xFFFFFF and matPrimaryContainer)
+                themeSpecialKeyBg = String.format("#%06X", 0xFFFFFF and matPrimaryContainer)
+                themeRegularKeyBg = String.format("#%06X", 0xFFFFFF and matSurfaceHigh)
                 themeToolbarBg = String.format("#%06X", 0xFFFFFF and matSurfaceHigh)
                 themeTextColor = matOnSurface
-                themeHintColor = String.format("#%02X%06X",
-                    if (matIsDark) 0xB3 else 0x99,
-                    0xFFFFFF and matOnSurfaceVariant)
+                themeSpecialKeyTextColor = matOnPrimaryContainer
+                themeHintColor = "#998A8A8A"
             }
         }
+
+        if (themeName != "dynamic") themeSpecialKeyTextColor = themeTextColor
 
         if (adaptiveThemeEnabled && themeName != "dynamic") {
             val currentApp = detectForegroundApp()
@@ -883,7 +904,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             val insertIndex = clipboardHistory.count { it.isPinned }
             clipboardHistory.add(insertIndex, item)
         }
-        if (clipboardHistory.size > 100) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val maxLimit = prefs.getInt("clipboard_limit", 100).coerceAtLeast(1)
+        if (clipboardHistory.size > maxLimit) {
             val lastUnpinnedIndex = clipboardHistory.indexOfLast { !it.isPinned }
             if (lastUnpinnedIndex != -1) {
                 clipboardHistory.removeAt(lastUnpinnedIndex)
@@ -944,7 +967,9 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             clipboardHistory.add(insertIndex, item)
         }
 
-        if (clipboardHistory.size > 100) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val maxLimit = prefs.getInt("clipboard_limit", 100).coerceAtLeast(1)
+        if (clipboardHistory.size > maxLimit) {
             val lastUnpinnedIndex = clipboardHistory.indexOfLast { !it.isPinned }
             if (lastUnpinnedIndex != -1) {
                 clipboardHistory.removeAt(lastUnpinnedIndex)
@@ -1032,11 +1057,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             fixGrammarChip = null
 
             val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-            val calculatedHeight = if (isLandscape) {
-                (keyboardHeightDp * 1.15f).toInt().coerceIn(220, 420)
+            val baseHeight = if (isLandscape) {
+                (keyboardHeightDp * 0.8f).toInt().coerceIn(180, 260)
             } else {
                 keyboardHeightDp
             }
+            val extraPanelHeight = if (isAiChatActive) 190 else if (isTranslationActive) 110 else 0
+            val calculatedHeight = baseHeight + extraPanelHeight
             val params = keyboardContainer.layoutParams
             params.height = dpToPx(calculatedHeight)
             keyboardContainer.layoutParams = params
@@ -1051,7 +1078,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                 orientation = LinearLayout.VERTICAL
                 clipChildren = false
                 clipToPadding = false
-                setPadding(dpToPx(4), 0, dpToPx(4), dpToPx(8))
+                setPadding(dpToPx(4), 0, dpToPx(4), dpToPx(if (isLandscape) 3 else 8))
                 layoutParams = FrameLayout.LayoutParams(
                     keyboardWidthPx,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -1061,7 +1088,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             }
 
         if (isTranslationActive) {
-            // handled via system overlay
+            mainLayout.addView(createTranslationAttachedPanel())
+        }
+        if (isAiChatActive) {
+            mainLayout.addView(createAiAttachedPanel())
         }
         if (currentViewMode == ViewMode.CLIPBOARD) {
             mainLayout.addView(createNavigationToolbar("Clipboard History"))
@@ -1345,15 +1375,19 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createToolbarIconButton(resId: Int, isRedBackground: Boolean = false, onClick: () -> Unit): View {
         val container = FrameLayout(this).apply {
-            val bgColor = if (isRedBackground) Color.parseColor("#D32F2F") else Color.TRANSPARENT
-            background = createKeyDrawable(bgColor)
+            background = if (isRedBackground) {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor("#D32F2F"))
+                }
+            } else null
             isClickable = true
             isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
-                dpToPx(48),
-                dpToPx(48)
+                dpToPx(40),
+                dpToPx(40)
             ).apply {
-                setMargins(dpToPx(3), 0, dpToPx(3), 0)
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
             }
             setOnClickListener {
                 vibrateClick()
@@ -1363,10 +1397,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
         val imageView = ImageView(this).apply {
             setImageResource(resId)
-            setColorFilter(if (isRedBackground) Color.WHITE else matOnSurface)
+            setColorFilter(if (isRedBackground) Color.WHITE else themeTextColor)
             layoutParams = FrameLayout.LayoutParams(
-                dpToPx(24),
-                dpToPx(24)
+                dpToPx(22),
+                dpToPx(22)
             ).apply {
                 gravity = Gravity.CENTER
             }
@@ -1375,6 +1409,24 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         return container
     }
 
+    private var toolbarContainerWrapper: FrameLayout? = null
+
+    private fun refreshToolbarOnly() {
+        handler.post {
+            val wrapper = toolbarContainerWrapper ?: return@post
+            wrapper.removeAllViews()
+            isListeningStateUpdating = true
+            try {
+                val newToolbar = createToolbarInternalContent()
+                wrapper.addView(newToolbar)
+            } finally {
+                isListeningStateUpdating = false
+            }
+        }
+    }
+
+    private var isListeningStateUpdating = false
+
     private fun createToolbar(): View {
         if (isFontSelectorActive) {
             return createFontSelectorView()
@@ -1382,9 +1434,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val toolbarHeight = if (isToolbarCollapsed) dpToPx(20) else dpToPx(46)
 
-        // Integrated toolbar: same Material surface family as the keys, sitting
-        // flush with the keyboard. A subtle outlineVariant hairline + slight
-        // translucency (blur feel) keeps it from looking like a floating card.
         val wrapper = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1392,7 +1441,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             )
             setPadding(dpToPx(if (isToolbarCollapsed) 0 else 6), dpToPx(if (isToolbarCollapsed) 6 else 2), dpToPx(6), dpToPx(if (isToolbarCollapsed) 6 else 2))
         }
+        toolbarContainerWrapper = wrapper
+        wrapper.addView(createToolbarInternalContent())
+        return wrapper
+    }
 
+    private fun createToolbarInternalContent(): View {
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         val surfaceHigh = Color.parseColor(themeToolbarBg)
         val isUiDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         val toolbarBg = GradientDrawable().apply {
@@ -1412,7 +1467,6 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             gravity = Gravity.CENTER
             setPadding(dpToPx(4), 0, dpToPx(4), 0)
         }
-        wrapper.addView(toolbar)
 
         if (isToolbarCollapsed) {
             toolbar.removeAllViews()
@@ -1472,6 +1526,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                         setMargins(dpToPx(12), 0, dpToPx(12), 0)
                     }
                 }
+                activeVoiceWaveView = waveView
                 buttonsContainer.addView(waveView)
 
                 val stopBtn = createToolbarIconButton(R.drawable.ic_mic, true) {
@@ -1483,15 +1538,10 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     val online = isNetworkAvailable()
                     val transBtn = createToolbarPillButton(R.drawable.ic_translate, isTranslationActive && online) {
                         if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "Translation requires internet", Toast.LENGTH_SHORT).show(); return@createToolbarPillButton }
+                        vibrateClick()
                         isTranslationActive = !isTranslationActive
                         if (isTranslationActive) {
-                            if (isAiChatActive) {
-                                isAiChatActive = false
-                                hideAiSystemOverlay()
-                            }
-                            showTranslationOverlay()
-                        } else {
-                            hideTranslationOverlay()
+                            isAiChatActive = false
                         }
                         updateKeyboardLayout()
                     }
@@ -1506,12 +1556,12 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     currentViewMode = if (currentViewMode == ViewMode.CLIPBOARD) ViewMode.QWERTY else ViewMode.CLIPBOARD
                     updateKeyboardLayout()
                 }
-                buttonsContainer.addView(clipBtn)
 
                 val pcBtn = createToolbarPillButton(R.drawable.ic_pc, currentViewMode == ViewMode.PC_SHORTCUTS) {
                     currentViewMode = if (currentViewMode == ViewMode.PC_SHORTCUTS) ViewMode.QWERTY else ViewMode.PC_SHORTCUTS
                     updateKeyboardLayout()
                 }
+                buttonsContainer.addView(clipBtn)
                 buttonsContainer.addView(pcBtn)
 
                 buttonsContainer.addView(createToolbarIconButton(R.drawable.ic_height) { showSizeAdjustmentDialog() })
@@ -1534,11 +1584,13 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
                     })
                 }
 
-                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_camera, currentViewMode == ViewMode.OCR) { toggleOcrMode() })
-                buttonsContainer.addView(createToolbarPillButton(R.drawable.ic_font, currentKeyboardFont != KeyboardFont.NORMAL) {
+                val cameraBtn = createToolbarPillButton(R.drawable.ic_camera, currentViewMode == ViewMode.OCR) { toggleOcrMode() }
+                val fontBtn = createToolbarPillButton(R.drawable.ic_font, currentKeyboardFont != KeyboardFont.NORMAL) {
                     isFontSelectorActive = !isFontSelectorActive
                     updateKeyboardLayout()
-                })
+                }
+                buttonsContainer.addView(cameraBtn)
+                buttonsContainer.addView(fontBtn)
 
                 if (isLandscape) {
                     val pcActions = listOf(
@@ -1565,22 +1617,26 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             toolbar.addView(scrollView)
         }
 
-        return wrapper
+        return toolbar
     }
 
     private fun createToolbarPillButton(iconRes: Int, isActive: Boolean, onClick: () -> Unit): View {
-        val bgColor = if (isActive) matPrimary else Color.TRANSPARENT
         return FrameLayout(this).apply {
-            background = createKeyDrawable(bgColor)
+            background = if (isActive) {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.parseColor(themeAccentColor))
+                }
+            } else null
             isClickable = true
             isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply {
-                setMargins(dpToPx(3), 0, dpToPx(3), 0)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(40), dpToPx(40)).apply {
+                setMargins(dpToPx(2), 0, dpToPx(2), 0)
             }
             setOnClickListener { vibrateClick(); onClick() }
             addView(ImageView(this@GlideTypeKeyboardService).apply {
                 setImageResource(iconRes)
-                setColorFilter(if (isActive) Color.WHITE else matOnSurface)
+                setColorFilter(if (isActive) Color.WHITE else themeTextColor)
                 layoutParams = FrameLayout.LayoutParams(dpToPx(22), dpToPx(22)).apply { gravity = Gravity.CENTER }
             })
         }
@@ -1588,58 +1644,20 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
 
     private fun createAiGradientButton(): View {
         val online = isNetworkAvailable()
-        return FrameLayout(this).apply {
-            background = createKeyDrawable(Color.parseColor(
-                if (!online) "#33111111"
-                else if (isAiChatActive) themeAccentColor
-                else "#44222222"
-            ))
-            isClickable = online
-            isFocusable = online
-            alpha = if (online) 1f else 0.4f
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply {
-                setMargins(dpToPx(2), 0, dpToPx(2), 0)
+        return createToolbarPillButton(R.drawable.ic_gemini, isAiChatActive) {
+            if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show(); return@createToolbarPillButton }
+            vibrateClick()
+            isAiChatActive = !isAiChatActive
+            if (isAiChatActive) {
+                isTranslationActive = false
             }
-            setOnClickListener {
-                if (!online) { Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
-                vibrateClick()
-                isAiChatActive = !isAiChatActive
-                if (isAiChatActive) {
-                    isTranslationActive = false
-                    hideTranslationOverlay()
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isNetworkAvailable()) {
-                        isAiChatActive = false; updateKeyboardLayout()
-                        Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this@GlideTypeKeyboardService)) {
-                        Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for AI popup", Toast.LENGTH_LONG).show()
-                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                        isAiChatActive = false; updateKeyboardLayout()
-                        return@setOnClickListener
-                    }
-                    showAiSystemOverlay()
-                } else {
-hideAiSystemOverlay()
-        hideTranslationOverlay()
-                }
-                updateKeyboardLayout()
-            }
-            addView(TextView(this@GlideTypeKeyboardService).apply {
-                text = "AI"
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                gravity = Gravity.CENTER
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                ).apply { gravity = Gravity.CENTER }
-            })
+            updateKeyboardLayout()
+        }.apply {
+            if (!online) alpha = 0.4f
         }
     }
 
-        private fun createNavigationToolbar(title: String): View {
+    private fun createNavigationToolbar(title: String): View {
         val toolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor(themeToolbarBg))
@@ -1903,7 +1921,8 @@ hideAiSystemOverlay()
                             "spacebar" -> if (currentViewMode == ViewMode.HINDI) "हिन्दी" else "English"
                             else -> key
                         }
-                        setTextColor(themeTextColor)
+                        val isSpecialKey = listOf("shift", "back", "enter", "?123", "abc", "emoji").contains(key.lowercase())
+                        setTextColor(if (isSpecialKey) themeSpecialKeyTextColor else themeTextColor)
                         val isSingleChar = text.length == 1
                         val textSize = if (isSingleChar) {
                             if (isLandscape) 24f else 22f
@@ -1927,10 +1946,13 @@ hideAiSystemOverlay()
 
                 val hint = getHintForKey(key)
                 if (hint != null) {
+                    val single = key.length == 1
+                    val mainSp = if (single) (if (isLandscape) 24f else 22f) else (if (isLandscape) 16f else 15f)
+                    val useSp = if (keyFontSizeSp > 0) keyFontSizeSp.toFloat() else mainSp
                     val hintTextView = TextView(context).apply {
                         text = hint
                         setTextColor(Color.parseColor(themeHintColor))
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, useSp * 0.38f)
                         gravity = Gravity.CENTER
                         isClickable = false
                         isFocusable = false
@@ -1940,7 +1962,7 @@ hideAiSystemOverlay()
                         ).apply {
                             addRule(RelativeLayout.ALIGN_PARENT_TOP)
                             addRule(RelativeLayout.ALIGN_PARENT_RIGHT)
-                            setMargins(0, dpToPx(2), dpToPx(4), 0)
+                            setMargins(0, dpToPx(4), dpToPx(5), 0)
                         }
                     }
                     keyLayout.addView(hintTextView)
@@ -1951,88 +1973,20 @@ hideAiSystemOverlay()
                     keyLayout.setOnTouchListener { v, event ->
                         when (event.action) {
                             MotionEvent.ACTION_DOWN -> {
-                                vibrateClick()
+                                vibrateBackspace()  // always vibrate backspace
                                 playClick(android.view.KeyEvent.KEYCODE_DEL)
                                 startPressEffect(v, event)
-                                val targetField = if (isTranslationActive && translationInputField != null) translationInputField
-                                    else null
-                                val aiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
-                                    else null
-                                val bufField = if (!isTranslationActive && !isAiChatActive) internalEditTextFocused else null
-                                if (targetField != null) {
-                                    val et = targetField!!
-                                    val start = et.selectionStart
-                                    val end = et.selectionEnd
-                                    if (start != end) {
-                                        et.text.delete(Math.min(start, end), Math.max(start, end))
-                                    } else {
-                                        et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                        et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                                    }
-                                } else if (aiField != null) {
-                                    val et = aiField!!
-                                    val s = et.selectionStart.coerceAtLeast(0)
-                                    val e = et.selectionEnd.coerceAtLeast(0)
-                                    if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
-                                } else if (bufField != null) {
-                                    val et = bufField!!
-                                    val s = et.selectionStart.coerceAtLeast(0)
-                                    val e = et.selectionEnd.coerceAtLeast(0)
-                                    if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
-                                } else {
-                                    val ic = currentInputConnection
-                                    val selected = ic?.getSelectedText(0)
-                                    if (!selected.isNullOrEmpty()) {
-                                        ic.commitText("", 1)
-                                    } else {
-                                        ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                        ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                                    }
-                                }
-                                
+                                performBackspaceAction()
+
                                 backspaceRunnable = object : Runnable {
                                     override fun run() {
-                                        vibrateClick()
+                                        vibrateBackspace()  // continuous haptic during long-press
                                         playClick(android.view.KeyEvent.KEYCODE_DEL)
-                                        val repTargetField = if (isTranslationActive && translationInputField != null) translationInputField
-                                            else null
-                                        val repAiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField
-                                            else null
-                                        val repBufField = if (!isTranslationActive && !isAiChatActive) internalEditTextFocused else null
-                                        if (repTargetField != null) {
-                                            val et = repTargetField!!
-                                            val start = et.selectionStart
-                                            val end = et.selectionEnd
-                                            if (start != end) {
-                                                et.text.delete(Math.min(start, end), Math.max(start, end))
-                                            } else {
-                                                et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                                et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                                            }
-                                        } else if (repAiField != null) {
-                                            val et = repAiField!!
-                                            val s = et.selectionStart.coerceAtLeast(0)
-                                            val e = et.selectionEnd.coerceAtLeast(0)
-                                            if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
-                                        } else if (repBufField != null) {
-                                            val et = repBufField!!
-                                            val s = et.selectionStart.coerceAtLeast(0)
-                                            val e = et.selectionEnd.coerceAtLeast(0)
-                                            if (e > s) { et.text.delete(s, e) } else if (s > 0) { et.text.delete(s - 1, s) }
-                                        } else {
-                                            val ic = currentInputConnection
-                                            val selected = ic?.getSelectedText(0)
-                                            if (!selected.isNullOrEmpty()) {
-                                                ic.commitText("", 1)
-                                            } else {
-                                                ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                                                ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                                            }
-                                        }
+                                        performBackspaceAction()
                                         handler.postDelayed(this, 45)
                                     }
                                 }
-                                handler.postDelayed(backspaceRunnable!!, 380)
+                                handler.postDelayed(backspaceRunnable!!, 400)
                                 v.isPressed = true
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -2040,6 +1994,7 @@ hideAiSystemOverlay()
                                 backspaceRunnable = null
                                 v.isPressed = false
                                 endPressEffect()
+                                updateShiftStateBasedOnContext()
                             }
                         }
                         true
@@ -2056,6 +2011,7 @@ hideAiSystemOverlay()
                     var dragStartX = 0f
                     var dragStartY = 0f
                     var swipeDetected = false
+                    var lastCursorPos = 0f
 
                     keyLayout.setOnTouchListener { v, event ->
                         when (event.action) {
@@ -2064,6 +2020,7 @@ hideAiSystemOverlay()
                                 swipeDetected = false
                                 dragStartX = event.rawX
                                 dragStartY = event.rawY
+                                lastCursorPos = event.rawX
                                 v.isPressed = true
                                 handler.postDelayed(spaceLongPressRunnableLocal, 1500)
                                 startPressEffect(v, event)
@@ -2071,7 +2028,18 @@ hideAiSystemOverlay()
                             MotionEvent.ACTION_MOVE -> {
                                 val deltaX = event.rawX - dragStartX
                                 val deltaY = event.rawY - dragStartY
-                                if (Math.abs(deltaX) > 100 && Math.abs(deltaY) < 50 && !swipeDetected) {
+
+                                // Spacebar trackpad cursor drag control:
+                                val stepDelta = event.rawX - lastCursorPos
+                                if (Math.abs(stepDelta) > 16f) {
+                                    swipeDetected = true
+                                    handler.removeCallbacks(spaceLongPressRunnableLocal)
+                                    val stepRight = stepDelta > 0
+                                    moveCursorStep(stepRight)
+                                    lastCursorPos = event.rawX
+                                }
+
+                                if (Math.abs(deltaX) > 120 && Math.abs(deltaY) < 50 && !swipeDetected) {
                                     swipeDetected = true
                                     handler.removeCallbacks(spaceLongPressRunnableLocal)
                                     vibrateClick()
@@ -2120,6 +2088,7 @@ hideAiSystemOverlay()
                                 startKeyTime = System.currentTimeMillis()
                                 keyLongPressed = false
                                 v.isPressed = true
+                                vibrateClick()
                                 animateKeyPress(v, true)
                                 showKeyPreview(v, key)
                                 handler.postDelayed(keyLongPressRunnable, longPressDelayMs.toLong())
@@ -2188,6 +2157,56 @@ hideAiSystemOverlay()
         return row
     }
 
+    private var hasTypedLetterInCurrentWord = false
+
+    private fun isTerminalInput(): Boolean {
+        val info = currentInputEditorInfo ?: return false
+        val pkg = info.packageName?.lowercase() ?: ""
+        return info.inputType == 0 || pkg.contains("termux") || pkg.contains("terminal") || pkg.contains("connectbot") || pkg.contains("juicessh")
+    }
+
+    private fun updateShiftStateBasedOnContext() {
+        if (!autoCapEnabled || isCapsLock || isAiChatActive || isTranslationActive) return
+        val oldShifted = isShifted
+
+        if (isTerminalInput()) {
+            isShifted = false
+            if (isShifted != oldShifted) {
+                updateKeyboardLayout()
+            }
+            return
+        }
+
+        val ic = currentInputConnection
+        if (ic == null) {
+            isShifted = true
+        } else {
+            val textBefore = ic.getTextBeforeCursor(64, 0)?.toString() ?: ""
+            // Auto-cap rules: capitalize ONLY at sentence start
+            // - Empty text / beginning of input
+            // - After newline
+            // - After ". " / "? " / "! " (sentence-ending punctuation + space)
+            val shouldCap = when {
+                textBefore.isEmpty() -> true
+                textBefore.endsWith("\n") -> true
+                textBefore.length >= 2 && textBefore.endsWith(" ") && 
+                    (textBefore.dropLast(1).endsWith(".") || 
+                     textBefore.dropLast(1).endsWith("?") || 
+                     textBefore.dropLast(1).endsWith("!")) -> true
+                else -> false
+            }
+            if (hasTypedLetterInCurrentWord) {
+                // Currently mid-word: never shift
+                isShifted = false
+            } else {
+                isShifted = shouldCap
+            }
+        }
+        if (isShifted != oldShifted) {
+            updateKeyboardLayout()
+        }
+    }
+
     private fun getKeyCodeForChar(c: Char): Int {
         val lower = c.lowercaseChar()
         if (lower in 'a'..'z') {
@@ -2203,26 +2222,89 @@ hideAiSystemOverlay()
         }
     }
 
-    private fun updateShiftStateBasedOnContext() {
-        if (!autoCapEnabled) return
-        val oldShifted = isShifted
-        val ic = currentInputConnection
-        if (ic == null) {
-            isShifted = true
+    private fun moveCursorStep(stepRight: Boolean) {
+        vibrateClick()
+        val targetField = if (isTranslationActive && translationInputField != null) translationInputField
+            else if (isAiChatActive && aiInputField != null) aiInputField
+            else if (internalEditTextFocused != null) internalEditTextFocused
+            else null
+
+        if (targetField != null) {
+            val currentPos = targetField.selectionEnd.coerceAtLeast(0)
+            val newPos = if (stepRight) (currentPos + 1).coerceAtMost(targetField.text.length)
+                         else (currentPos - 1).coerceAtLeast(0)
+            targetField.setSelection(newPos)
         } else {
-            val textBefore = ic.getTextBeforeCursor(2, 0)?.toString() ?: ""
-            if (textBefore.isEmpty()) {
-                isShifted = true
-            } else {
-                val prev = textBefore.last()
-                isShifted = prev == ' ' || prev == '\n' || prev == '.' || prev == '?' || prev == '!'
-                if (!isShifted && !isCapsLock) {
-                    isShifted = false
+            val keyCode = if (stepRight) android.view.KeyEvent.KEYCODE_DPAD_RIGHT else android.view.KeyEvent.KEYCODE_DPAD_LEFT
+            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+            currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+        }
+    }
+
+    private fun performBackspaceAction() {
+        // Helper: delete selected text or single character from an EditText
+        fun deleteOneChar(et: android.widget.EditText) {
+            val text = et.text
+            if (text.isNullOrEmpty()) return
+            val selStart = et.selectionStart.coerceAtLeast(0)
+            val selEnd = et.selectionEnd.coerceAtLeast(0)
+            val minSel = Math.min(selStart, selEnd)
+            val maxSel = Math.max(selStart, selEnd)
+            if (maxSel > minSel) {
+                // User has text selected -> delete entire selection!
+                text.delete(minSel, maxSel)
+            } else if (maxSel > 0) {
+                // Delete 1 character before cursor
+                text.delete(maxSel - 1, maxSel)
+            } else if (text.length > 0) {
+                text.delete(text.length - 1, text.length)
+                et.setSelection(text.length)
+            }
+        }
+
+        val targetField = if (isTranslationActive && translationInputField != null) translationInputField else null
+        val aiField = if (!isTranslationActive && isAiChatActive && aiInputField != null) aiInputField else null
+        val bufField = if (!isTranslationActive && !isAiChatActive) internalEditTextFocused else null
+
+        when {
+            targetField != null -> deleteOneChar(targetField)
+            aiField != null -> deleteOneChar(aiField)
+            bufField != null -> deleteOneChar(bufField)
+            else -> {
+                val ic = currentInputConnection ?: return
+                val selectedText = ic.getSelectedText(0)
+                if (!selectedText.isNullOrEmpty()) {
+                    // Selected text in external app -> delete selection!
+                    ic.commitText("", 1)
+                } else {
+                    val deleted = ic.deleteSurroundingText(1, 0)
+                    if (!deleted) {
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                    }
                 }
             }
         }
-        if (isShifted != oldShifted) {
-            updateKeyboardLayout()
+        val textBefore = currentInputConnection?.getTextBeforeCursor(1, 0)?.toString() ?: ""
+        if (textBefore.isEmpty() || textBefore.endsWith(" ") || textBefore.endsWith("\n") || textBefore.endsWith("\t")) {
+            hasTypedLetterInCurrentWord = false
+        }
+    }
+
+    // Deletes one word backwards (for long-press backspace)
+    private fun performWordBackspace() {
+        val ic = currentInputConnection ?: return
+        val textBefore = ic.getTextBeforeCursor(100, 0)?.toString() ?: return
+        if (textBefore.isEmpty()) return
+        // Find where word ends (skip trailing spaces, then delete word)
+        var deleteCount = 0
+        var i = textBefore.length - 1
+        // Skip trailing spaces
+        while (i >= 0 && textBefore[i] == ' ') { deleteCount++; i-- }
+        // Delete word characters
+        while (i >= 0 && textBefore[i] != ' ' && textBefore[i] != '\n') { deleteCount++; i-- }
+        if (deleteCount > 0) {
+            ic.deleteSurroundingText(deleteCount, 0)
         }
     }
 
@@ -2247,78 +2329,40 @@ hideAiSystemOverlay()
             return
         }
 
-        if (isTranslationActive && translationInputField != null) {
-            val et = translationInputField!!
-            val start = et.selectionStart
-            val end = et.selectionEnd
+        if (currentViewMode == ViewMode.CLIPBOARD) {
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    if (start > 0 || end > 0) {
-                        if (start != end) {
-                            et.text.delete(Math.min(start, end), Math.max(start, end))
-                        } else {
-                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                            et.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
-                        }
-                    }
-                }
-                "enter", "↵" -> {
-                    val text = et.text.toString()
-                    if (text.isNotEmpty()) {
-                        translateText(text, translationSourceLang, translationTargetLang) { result ->
-                            if (result != null) {
-                                currentInputConnection?.commitText(result, 1)
-                                et.text.clear()
-                            }
-                        }
-                    }
-                    wasLastKeySpace = true
-                }
-                "spacebar", " ", "␣" -> {
-                    et.text.replace(Math.min(start, end), Math.max(start, end), " ")
-                    wasLastKeySpace = true
-                }
-                "shift", "⇧", "⇪" -> {
-                    // Ignored in translation field
-                }
-                "?123" -> {
-                    currentViewMode = ViewMode.SYMBOLS
-                    isSymbolsPage2 = false
-                    updateKeyboardLayout()
-                }
-                "1/2", "2/2" -> {
-                    if (currentViewMode == ViewMode.HINDI) {
-                        isHindiPage2 = !isHindiPage2
-                    } else {
-                        isSymbolsPage2 = !isSymbolsPage2
-                    }
-                    updateKeyboardLayout()
-                }
-                "abc" -> {
                     currentViewMode = ViewMode.QWERTY
                     updateKeyboardLayout()
                 }
-                "emoji" -> {
-                    currentViewMode = ViewMode.EMOJIS
-                    updateKeyboardLayout()
+            }
+            return
+        }
+
+        val etTrans = translationInputField
+        if (isTranslationActive && etTrans != null && key.lowercase() !in listOf("?123", "1/2", "2/2", "abc", "emoji")) {
+            val et = etTrans
+            val start = et.selectionStart.coerceAtLeast(0)
+            val end = et.selectionEnd.coerceAtLeast(0)
+            when (key.lowercase()) {
+                "back", "⌫" -> {
+                    performBackspaceAction()
+                    return
                 }
+                "enter", "↵" -> { }
+                "spacebar", " ", "␣" -> et.text.replace(Math.min(start, end), Math.max(start, end), " ")
+                "shift", "⇧", "⇪" -> { }
                 else -> {
                     val transformed = if (key.length == 1) applyFontTransformation(key) else key
-                    val wasShifted = isShifted
                     et.text.replace(Math.min(start, end), Math.max(start, end), transformed)
                     if (isShifted && !isCapsLock) {
                         isShifted = false
-                    }
-                    wasLastKeySpace = false
-                    if (isShifted != wasShifted) {
-                        updateKeyboardLayout()
                     }
                 }
             }
             return
         }
 
-        // Route to internal EditText (AI input, etc.) when focused
         val aiEdit = aiInputField
         if (isAiChatActive && aiEdit != null && key.lowercase() !in listOf("?123", "1/2", "2/2", "abc", "emoji")) {
             val et = aiEdit
@@ -2326,13 +2370,8 @@ hideAiSystemOverlay()
             val selEnd = et.selectionEnd.coerceAtLeast(0)
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    val s = et.selectionStart.coerceAtLeast(0)
-                    val e = et.selectionEnd.coerceAtLeast(0)
-                    if (e > s) {
-                        et.text.delete(s, e)
-                    } else if (s > 0) {
-                        et.text.delete(s - 1, s)
-                    }
+                    performBackspaceAction()
+                    return
                 }
                 "enter", "↵" -> { }
                 "spacebar", " ", "␣" -> et.text.replace(selStart, selEnd, " ")
@@ -2341,11 +2380,8 @@ hideAiSystemOverlay()
                     if (key.length == 1) et.text.replace(selStart, selEnd, key)
                 }
             }
-            wasLastKeySpace = key == "spacebar" || key == " " || key == "␣"
             if (isShifted && !isCapsLock) {
-                val wasShifted = isShifted
                 isShifted = false
-                if (isShifted != wasShifted) updateKeyboardLayout()
             }
             return
         }
@@ -2356,13 +2392,8 @@ hideAiSystemOverlay()
             val end = et.selectionEnd.coerceAtLeast(0)
             when (key.lowercase()) {
                 "back", "⌫" -> {
-                    val selStart = et.selectionStart.coerceAtLeast(0)
-                    val selEnd = et.selectionEnd.coerceAtLeast(0)
-                    if (selEnd > selStart) {
-                        et.text.delete(selStart, selEnd)
-                    } else if (selStart > 0) {
-                        et.text.delete(selStart - 1, selStart)
-                    }
+                    performBackspaceAction()
+                    return
                 }
                 "enter", "↵" -> { }
                 "spacebar", " ", "␣" -> et.text.replace(Math.min(start, end), Math.max(start, end), " ")
@@ -2371,7 +2402,6 @@ hideAiSystemOverlay()
                     if (key.length == 1) et.text.replace(Math.min(start, end), Math.max(start, end), key)
                 }
             }
-            wasLastKeySpace = key == "spacebar" || key == " " || key == "␣"
             if (isShifted && !isCapsLock) isShifted = false
             return
         }
@@ -2391,13 +2421,26 @@ hideAiSystemOverlay()
                 updateKeyboardLayout()
             }
             "back", "⌫" -> {
-                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
-                ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                val selectedText = ic.getSelectedText(0)
+                if (!selectedText.isNullOrEmpty()) {
+                    ic.commitText("", 1)
+                } else {
+                    val deleted = ic.deleteSurroundingText(1, 0)
+                    if (!deleted) {
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                    }
+                }
+                val textBefore = ic.getTextBeforeCursor(1, 0)?.toString() ?: ""
+                if (textBefore.isEmpty() || textBefore.endsWith(" ") || textBefore.endsWith("\n") || textBefore.endsWith("\t")) {
+                    hasTypedLetterInCurrentWord = false
+                }
                 updateShiftStateBasedOnContext()
             }
             "enter", "↵" -> {
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
                 ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                hasTypedLetterInCurrentWord = false
                 wasLastKeySpace = true
                 updateShiftStateBasedOnContext()
             }
@@ -2409,12 +2452,17 @@ hideAiSystemOverlay()
                         ic.deleteSurroundingText(1, 0)
                         ic.commitText(". ", 1)
                     } else {
+                        // Try auto-correct before inserting space
+                        tryAutoCorrect(ic)
                         ic.commitText(" ", 1)
                     }
                 } else {
+                    // Try auto-correct before inserting space
+                    tryAutoCorrect(ic)
                     ic.commitText(" ", 1)
                 }
                 lastSpacePressTime = now
+                hasTypedLetterInCurrentWord = false
                 wasLastKeySpace = true
                 updateShiftStateBasedOnContext()
             }
@@ -2443,20 +2491,81 @@ hideAiSystemOverlay()
                 val transformed = if (key.length == 1) applyFontTransformation(key) else key
                 val wasShifted = isShifted
                 ic.commitText(transformed, 1)
+                if (key.length == 1 && key.first().isLetter()) {
+                    hasTypedLetterInCurrentWord = true
+                    // User is editing word - remove from blacklist so autocorrect can try again on next space
+                    // But we only add to blacklist after a correction, so just track normally
+                }
                 if (isShifted && !isCapsLock) {
                     isShifted = false
                 }
                 wasLastKeySpace = false
-                // Only re-evaluate auto-cap for non-shifted input. Re-running it right
-                // after a shifted commit can read a stale (empty) buffer and falsely
-                // re-lock shift, so skip it when we just typed a shifted character.
-                if (!wasShifted) {
-                    updateShiftStateBasedOnContext()
-                }
+                updateShiftStateBasedOnContext()
                 if (isShifted != wasShifted) {
                     updateKeyboardLayout()
                 }
             }
+        }
+    }
+
+    // Auto-correct: called just before inserting space, replaces the current word if it's a typo
+    private fun tryAutoCorrect(ic: android.view.inputmethod.InputConnection) {
+        if (!autoCorrectEnabled) return
+        if (isTranslationActive || isAiChatActive) return
+        val textBefore = ic.getTextBeforeCursor(50, 0)?.toString() ?: return
+        if (textBefore.isEmpty() || textBefore.last() == ' ') return
+        // Extract the current word (last run of non-space chars)
+        val wordStart = textBefore.indexOfLast { it == ' ' || it == '\n' } + 1
+        val currentWord = textBefore.substring(wordStart)
+        if (currentWord.length < 2) return
+        // Check blacklist - don't re-correct words already corrected or manually typed
+        if (autoCorrectBlacklist.contains(currentWord.lowercase())) return
+        val corrected = findCorrection(currentWord) ?: return
+        if (corrected == currentWord) return
+        // Apply the correction
+        ic.deleteSurroundingText(currentWord.length, 0)
+        ic.commitText(corrected, 1)
+        // Add corrected original to blacklist so re-edit+space won't re-correct
+        autoCorrectBlacklist.add(currentWord.lowercase())
+    }
+
+    // Simple auto-correct dictionary: common typos -> corrections
+    private val autoCorrectDict = mapOf(
+        "teh" to "the", "hte" to "the", "adn" to "and", "nad" to "and",
+        "ot" to "to", "fo" to "of", "od" to "do", "si" to "is",
+        "jsut" to "just", "jstu" to "just", "waht" to "what", "wtah" to "what",
+        "tahn" to "than", "thna" to "than", "taht" to "that", "wiht" to "with",
+        "tihs" to "this", "hsit" to "this", "form" to "from", "frmo" to "from",
+        "htey" to "they", "tehy" to "they", "yuo" to "you", "oyu" to "you",
+        "ont" to "not", "nto" to "not", "cna" to "can", "acn" to "can",
+        "siad" to "said", "asid" to "said", "woudl" to "would", "wolud" to "would",
+        "coudl" to "could", "colud" to "could", "shoudl" to "should", "shuold" to "should",
+        "becuase" to "because", "becasue" to "because", "becouse" to "because",
+        "recieve" to "receive", "recieved" to "received", "beleive" to "believe",
+        "freind" to "friend", "frined" to "friend", "peole" to "people",
+        "poeple" to "people", "hav" to "have", "ahve" to "have",
+        "dont" to "don't", "doesnt" to "doesn't", "cant" to "can't",
+        "wont" to "won't", "isnt" to "isn't", "arent" to "aren't",
+        "im" to "I'm", "Id" to "I'd", "Ill" to "I'll", "Ive" to "I've",
+        "teh" to "the", "helo" to "hello", "helo" to "hello",
+        "thnak" to "thank", "thankyou" to "thank you",
+        "ok" to "ok", "okay" to "okay",
+        "liek" to "like", "lke" to "like", "kmow" to "know", "knwo" to "know",
+        "soo" to "so", "tooo" to "too", "goo" to "go", "cme" to "come",
+        "tiem" to "time", "timne" to "time", "geat" to "great", "gret" to "great",
+        "realy" to "really", "relly" to "really", "definately" to "definitely",
+        "defintely" to "definitely", "seperate" to "separate", "occured" to "occurred",
+        "accomodate" to "accommodate", "begining" to "beginning", "noticeable" to "noticeable"
+    )
+
+    private fun findCorrection(word: String): String? {
+        val lower = word.lowercase()
+        val correction = autoCorrectDict[lower] ?: return null
+        // Preserve original capitalization
+        return when {
+            word[0].isUpperCase() && correction[0].isLetter() -> 
+                correction[0].uppercaseChar() + correction.substring(1)
+            else -> correction
         }
     }
 
@@ -2983,7 +3092,7 @@ hideAiSystemOverlay()
 
         val abcBtn = TextView(this).apply {
             text = "ABC"
-            setTextColor(Color.WHITE)
+            setTextColor(themeTextColor)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             gravity = Gravity.CENTER
             background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 4)
@@ -3024,7 +3133,7 @@ hideAiSystemOverlay()
 
         val emojiBackspace = ImageView(this).apply {
             setImageResource(R.drawable.ic_backspace)
-            setColorFilter(Color.WHITE)
+            setColorFilter(themeTextColor)
             background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 4)
             val pad = dpToPx(5)
             setPadding(pad, pad, pad, pad)
@@ -3182,7 +3291,7 @@ hideAiSystemOverlay()
 
             val tabView = ImageView(this).apply {
                 setImageResource(resId)
-                setColorFilter(Color.WHITE)
+                setColorFilter(if (isActive) Color.WHITE else themeTextColor)
                 val pad = dpToPx(6)
                 setPadding(pad, pad, pad, pad)
                 background = createKeyDrawableWithRadius(
@@ -3208,6 +3317,7 @@ hideAiSystemOverlay()
                                 if (active) Color.parseColor(themeAccentColor) else Color.TRANSPARENT,
                                 4
                             )
+                            child.setColorFilter(if (active) Color.WHITE else themeTextColor)
                         }
                     }
                     loadEmojiGrid(i)
@@ -3223,24 +3333,23 @@ hideAiSystemOverlay()
     private fun createClipboardLayout(): View {
         val rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#000000"))
+            setBackgroundColor(Color.parseColor(themeBgColor))
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
 
-        // Compact chip row (Clear All, Clear Unpinned) — no back button, no title (navigation toolbar handles that)
+        // Compact chip row (Clear All, Clear Unpinned)
         val chipRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END
             setPadding(dpToPx(8), dpToPx(3), dpToPx(8), dpToPx(3))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        for ((name, col) in listOf("Clear All" to "#FF4444", "Clear Unpinned" to "#FF8F00")) {
+        for ((name, col) in listOf("Clear All" to "#EF4444", "Clear Unpinned" to "#F59E0B")) {
             chipRow.addView(TextView(this).apply {
                 text = name; setTextColor(Color.parseColor(col))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f); gravity = Gravity.CENTER
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(2))
-                background = createKeyDrawableWithRadius(Color.parseColor(col + "22"), 4)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(20)).apply { setMargins(dpToPx(2), 0, dpToPx(2), 0) }
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+                setPadding(dpToPx(10), dpToPx(3), dpToPx(10), dpToPx(3))
+                background = createKeyDrawableWithRadius(Color.parseColor(col + "22"), 8)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(24)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
                 setOnClickListener { vibrateClick()
                     when (name) {
                         "Clear All" -> clearClipboard(false)
@@ -3255,39 +3364,52 @@ hideAiSystemOverlay()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val listLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
+            orientation = LinearLayout.VERTICAL; setPadding(dpToPx(6), dpToPx(2), dpToPx(6), dpToPx(4))
         }
 
         if (clipboardHistory.isEmpty()) {
             listLayout.addView(TextView(this).apply {
                 text = "Clipboard is empty"
-                setTextColor(Color.parseColor("#66FFFFFF")); gravity = Gravity.CENTER
+                setTextColor(Color.parseColor(themeHintColor)); gravity = Gravity.CENTER
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(100))
             })
         } else {
             val now = System.currentTimeMillis()
+            val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val timelineEnabled = prefs.getBoolean("clipboard_timeline", false)
+            val maxLimit = prefs.getInt("clipboard_limit", 100).coerceAtLeast(1)
+            val unpinnedItems = clipboardHistory.filter { !it.isPinned }.take(maxLimit)
             val pinnedItems = clipboardHistory.filter { it.isPinned }
-            val recentItems = clipboardHistory.filter { !it.isPinned && now - it.timestamp < 86400000L }
-            val yesterdayItems = clipboardHistory.filter { !it.isPinned && now - it.timestamp in 86400000L..172800000L }
 
             data class Section(val title: String, val items: List<ClipboardItem>)
-            val visibleRecent = recentItems.take(30)
-            val visibleYesterday = yesterdayItems.take(20)
-            val sections = listOfNotNull(
-                Section("Pinned", pinnedItems).takeIf { pinnedItems.isNotEmpty() },
-                Section("Recent", visibleRecent).takeIf { visibleRecent.isNotEmpty() },
-                Section("Yesterday", visibleYesterday).takeIf { visibleYesterday.isNotEmpty() }
-            )
+            val sections = if (timelineEnabled) {
+                val recentItems = unpinnedItems.filter { now - it.timestamp < 86400000L }
+                val yesterdayItems = unpinnedItems.filter { now - it.timestamp in 86400000L..172800000L }
+                val olderItems = unpinnedItems.filter { now - it.timestamp > 172800000L }
+                listOfNotNull(
+                    Section("Pinned", pinnedItems).takeIf { pinnedItems.isNotEmpty() },
+                    Section("Recent", recentItems).takeIf { recentItems.isNotEmpty() },
+                    Section("Yesterday", yesterdayItems).takeIf { yesterdayItems.isNotEmpty() },
+                    Section("Older", olderItems).takeIf { olderItems.isNotEmpty() }
+                )
+            } else {
+                val allItems = pinnedItems + unpinnedItems
+                listOfNotNull(
+                    Section("", allItems).takeIf { allItems.isNotEmpty() }
+                )
+            }
 
             for ((secIdx, section) in sections.withIndex()) {
-                // Section header
-                listLayout.addView(TextView(this).apply {
-                    text = section.title; setTextColor(Color.parseColor(themeAccentColor))
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); setTypeface(null, android.graphics.Typeface.BOLD)
-                    setPadding(dpToPx(6), dpToPx(if (secIdx == 0) 2 else 6), dpToPx(6), dpToPx(2))
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                })
+                // Render section header only if title is not empty (i.e. timeline is enabled)
+                if (section.title.isNotEmpty()) {
+                    listLayout.addView(TextView(this).apply {
+                        text = section.title; setTextColor(Color.parseColor(themeAccentColor))
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); setTypeface(null, android.graphics.Typeface.NORMAL)
+                        setPadding(dpToPx(6), dpToPx(if (secIdx == 0) 2 else 8), dpToPx(6), dpToPx(2))
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    })
+                }
 
                 for (item in section.items) {
                     val txt = item.text ?: continue
@@ -3299,13 +3421,9 @@ hideAiSystemOverlay()
 
                     val card = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                        setPadding(dpToPx(8), dpToPx(5), dpToPx(4), dpToPx(5))
-                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
-                        background = GradientDrawable().apply {
-                            cornerRadius = dpToPx(24).toFloat()
-                            setColor(Color.parseColor(if (isPinned) "#1A1A3E" else "#111122"))
-                            if (isPinned) setStroke(dpToPx(1), Color.parseColor(themeAccentColor + "88"))
-                        }
+                        setPadding(dpToPx(10), dpToPx(6), dpToPx(6), dpToPx(6))
+                        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dpToPx(3), 0, dpToPx(3)) }
+                        background = createKeyDrawableWithRadius(Color.parseColor(if (isPinned) themeSpecialKeyBg else themeRegularKeyBg), 12)
                         elevation = dpToPx(1).toFloat()
                         // Tap to insert
                         setOnClickListener { vibrateClick()
@@ -3322,7 +3440,6 @@ hideAiSystemOverlay()
                                 }
                             }
                         }
-                        // Swipe right → Pin, Swipe left → Delete
                         val gestureDetector = GestureDetector(this@GlideTypeKeyboardService, object : GestureDetector.SimpleOnGestureListener() {
                             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
                                 val dx = (e2.x - (e1?.x ?: e2.x))
@@ -3335,17 +3452,12 @@ hideAiSystemOverlay()
                             }
                         })
                         setOnTouchListener { _, event -> gestureDetector.onTouchEvent(event) }
-                        setOnLongClickListener {
-                            vibrateClick()
-                            Toast.makeText(this@GlideTypeKeyboardService, "Select items", Toast.LENGTH_SHORT).show()
-                            true
-                        }
                     }
 
                     // Image preview
                     if (isImage) {
                         card.addView(ImageView(this).apply {
-                            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply { setMargins(0, 0, dpToPx(6), 0) }
+                            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(36)).apply { setMargins(0, 0, dpToPx(8), 0) }
                             scaleType = ImageView.ScaleType.CENTER_CROP
                             try { setImageURI(android.net.Uri.parse(item.imageUri)) } catch (_: Exception) { setImageResource(R.drawable.ic_clipboard) }
                         })
@@ -3354,22 +3466,22 @@ hideAiSystemOverlay()
                     // Text column
                     val textCol = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dpToPx(4), 0) }
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dpToPx(6), 0) }
                     }
                     textCol.addView(TextView(this).apply {
-                        text = txt; setTextColor(Color.WHITE)
+                        text = txt; setTextColor(themeTextColor)
                         setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
                     })
                     textCol.addView(TextView(this).apply {
-                        text = if (isPinned) "• $ts" else ts
-                        setTextColor(Color.parseColor("#66FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+                        text = if (isPinned) "📌 $ts" else ts
+                        setTextColor(Color.parseColor(themeHintColor)); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
                     })
                     card.addView(textCol)
 
                     // URL browse icon
                     val isUrl = !isImage && android.util.Patterns.WEB_URL.matcher(txt).matches()
                     if (isUrl) {
-                        card.addView(createClipActionIcon(R.drawable.ic_browser, "#4F8CFF") {
+                        card.addView(createClipActionIcon(R.drawable.ic_browser, themeAccentColor) {
                             try {
                                 val url = if (!txt.startsWith("http")) "https://$txt" else txt
                                 startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
@@ -3379,9 +3491,9 @@ hideAiSystemOverlay()
                         })
                     }
                     // Pin/Unpin button
-                    card.addView(createClipActionIcon(if (isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (isPinned) themeAccentColor else "#FFFFFF") { togglePinItem(item) })
+                    card.addView(createClipActionIcon(if (isPinned) R.drawable.ic_pin else R.drawable.ic_unpin, if (isPinned) themeAccentColor else String.format("#%06X", 0xFFFFFF and themeTextColor)) { togglePinItem(item) })
                     // Delete button
-                    card.addView(createClipActionIcon(R.drawable.ic_delete, "#FF4444") { deleteClipboardItem(item) })
+                    card.addView(createClipActionIcon(R.drawable.ic_delete, "#EF4444") { deleteClipboardItem(item) })
                     listLayout.addView(card)
                 }
             }
@@ -3403,14 +3515,22 @@ hideAiSystemOverlay()
 
     private fun playClick(keyCode: Int) {
         if (!soundEnabled) return
-        val soundConstant = when (keyCode) {
-            android.view.KeyEvent.KEYCODE_ENTER -> android.view.SoundEffectConstants.NAVIGATION_DOWN
-            android.view.KeyEvent.KEYCODE_DEL -> android.view.SoundEffectConstants.CLICK
-            android.view.KeyEvent.KEYCODE_SPACE -> android.view.SoundEffectConstants.CLICK
-            else -> android.view.SoundEffectConstants.CLICK
-        }
-        if (::keyboardContainer.isInitialized) {
-            keyboardContainer.playSoundEffect(soundConstant)
+        try {
+            val toneType = when (keyCode) {
+                android.view.KeyEvent.KEYCODE_ENTER -> android.media.ToneGenerator.TONE_PROP_BEEP2
+                android.view.KeyEvent.KEYCODE_DEL -> android.media.ToneGenerator.TONE_DTMF_D
+                android.view.KeyEvent.KEYCODE_SPACE -> android.media.ToneGenerator.TONE_DTMF_0
+                else -> android.media.ToneGenerator.TONE_DTMF_1
+            }
+            val vol = 40 // ToneGenerator volume: 0-100
+            val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC, vol)
+            tg.startTone(toneType, 40)
+            handler.postDelayed({ tg.release() }, 100)
+        } catch (e: Exception) {
+            // Fallback to system sound
+            if (::keyboardContainer.isInitialized) {
+                keyboardContainer.playSoundEffect(android.view.SoundEffectConstants.CLICK)
+            }
         }
     }
 
@@ -3418,25 +3538,100 @@ hideAiSystemOverlay()
         if (!vibrationEnabled) return
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator.vibrate(VibrationEffect.createOneShot(22, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
-            vibrator.vibrate(25)
+            vibrator.vibrate(22)
         }
     }
 
+    // Always vibrate for backspace regardless of vibration setting
+    private fun vibrateBackspace() {
+        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createOneShot(28, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(28)
+        }
+    }
+
+    private class SquircleDrawable(
+        private val color: Int,
+        private val radiusDp: Float = 16f,
+        private val strokeColor: Int = Color.TRANSPARENT,
+        private val strokeWidthPx: Float = 0f
+    ) : android.graphics.drawable.Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = this@SquircleDrawable.color
+            style = Paint.Style.FILL
+        }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = strokeColor
+            style = Paint.Style.STROKE
+            this.strokeWidth = strokeWidthPx
+        }
+        private val path = android.graphics.Path()
+
+        override fun onBoundsChange(bounds: android.graphics.Rect) {
+            super.onBoundsChange(bounds)
+            updatePath(bounds)
+        }
+
+        private fun updatePath(b: android.graphics.Rect) {
+            path.reset()
+            val w = b.width().toFloat()
+            val h = b.height().toFloat()
+            if (w <= 0 || h <= 0) return
+
+            val left = b.left.toFloat()
+            val top = b.top.toFloat()
+            val right = b.right.toFloat()
+            val bottom = b.bottom.toFloat()
+
+            val maxR = Math.min(w, h) / 2f
+            val r = (radiusDp * 1.8f).coerceIn(6f, maxR)
+            val c = r * 0.55228475f
+            val k = r * 0.15f
+
+            path.moveTo(left + r, top)
+            path.lineTo(right - r, top)
+            path.cubicTo(right - r + c + k, top, right, top + r - c - k, right, top + r)
+            path.lineTo(right, bottom - r)
+            path.cubicTo(right, bottom - r + c + k, right - r + c + k, bottom, right - r, bottom)
+            path.lineTo(left + r, bottom)
+            path.cubicTo(left + r - c - k, bottom, left, bottom - r + c + k, left, bottom - r)
+            path.lineTo(left, top + r)
+            path.cubicTo(left, top + r - c - k, left + r - c - k, top, left + r, top)
+            path.close()
+        }
+
+        override fun draw(canvas: Canvas) {
+            canvas.drawPath(path, paint)
+            if (strokeWidthPx > 0f) {
+                canvas.drawPath(path, strokePaint)
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+            strokePaint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+            strokePaint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+    }
+
     private fun createKeyDrawable(color: Int): RippleDrawable {
-        val r = dpToPx(keyRadiusDp)
-        val content = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = r.toFloat()
-            setColor(color)
-        }
-        val mask = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = r.toFloat()
-            setColor(Color.WHITE)
-        }
+        val strokeColor = Color.argb(0x2E, Color.red(matOutlineVariant), Color.green(matOutlineVariant), Color.blue(matOutlineVariant))
+        val strokeWidth = dpToPx(1).toFloat()
+        val content = SquircleDrawable(color, keyRadiusDp.toFloat(), strokeColor, strokeWidth)
+        val mask = SquircleDrawable(Color.WHITE, keyRadiusDp.toFloat())
         return RippleDrawable(
             ColorStateList.valueOf(Color.argb(0x40, Color.red(matOnSurface), Color.green(matOnSurface), Color.blue(matOnSurface))),
             content,
@@ -3445,17 +3640,10 @@ hideAiSystemOverlay()
     }
 
     private fun createKeyDrawableWithRadius(color: Int, customRadiusDp: Int): RippleDrawable {
-        val r = dpToPx(customRadiusDp)
-        val content = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = r.toFloat()
-            setColor(color)
-        }
-        val mask = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = r.toFloat()
-            setColor(Color.WHITE)
-        }
+        val strokeColor = Color.argb(0x2E, Color.red(matOutlineVariant), Color.green(matOutlineVariant), Color.blue(matOutlineVariant))
+        val strokeWidth = dpToPx(1).toFloat()
+        val content = SquircleDrawable(color, customRadiusDp.toFloat(), strokeColor, strokeWidth)
+        val mask = SquircleDrawable(Color.WHITE, customRadiusDp.toFloat())
         return RippleDrawable(
             ColorStateList.valueOf(Color.argb(0x40, Color.red(matOnSurface), Color.green(matOnSurface), Color.blue(matOnSurface))),
             content,
@@ -3464,9 +3652,12 @@ hideAiSystemOverlay()
     }
 
     private fun animateKeyPress(v: View, pressDown: Boolean) {
-        val duration = if (pressDown) 80L else 200L
-        val scale = if (pressDown) 0.92f else 1.0f
-        v.animate().scaleX(scale).scaleY(scale).setDuration(duration).start()
+        val duration = if (pressDown) 90L else 160L
+        val scale = if (pressDown) 0.98f else 1.0f
+        v.animate().scaleX(scale).scaleY(scale)
+            .setDuration(duration)
+            .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+            .start()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -3478,11 +3669,12 @@ hideAiSystemOverlay()
     // fall back to Roboto Flex / Roboto Medium. Bold but balanced, Gboard-like.
     private val keyLabelTypeface: Typeface by lazy {
         try {
-            Typeface.create("google-sans", Typeface.BOLD)
-                ?: Typeface.create("sans-serif-medium", Typeface.BOLD)
-                ?: Typeface.DEFAULT_BOLD
+            Typeface.create("google-sans-text", Typeface.NORMAL)
+                ?: Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                ?: Typeface.create("roboto-flex", Typeface.NORMAL)
+                ?: Typeface.DEFAULT
         } catch (e: Exception) {
-            Typeface.DEFAULT_BOLD
+            Typeface.DEFAULT
         }
     }
 
@@ -3524,6 +3716,19 @@ hideAiSystemOverlay()
         matOnSurface = if (isDark) blendColors(n1Mid, Color.WHITE, 0.85f) else blendColors(n1Mid, Color.BLACK, 0.78f)
         matOnSurfaceVariant = n2Mid
         matOutlineVariant = n2Base
+        // Prefer the exact Material You dynamic color tokens when available so the
+        // keyboard matches the system Monet palette (surface containers, accent
+        // containers, outline variant, etc.).
+        sysColor("system_surface_container_low")?.let { matSurfaceLow = it }
+        sysColor("system_surface_container")?.let { matSurface = it }
+        sysColor("system_surface_container_high")?.let { matSurfaceHigh = it }
+        sysColor("system_primary_container")?.let { matPrimaryContainer = it }
+        sysColor("system_on_primary_container")?.let { matOnPrimaryContainer = it }
+        sysColor("system_secondary_container")?.let { matSecondaryContainer = it }
+        sysColor("system_on_secondary_container")?.let { matOnSecondaryContainer = it }
+        sysColor("system_on_surface")?.let { matOnSurface = it }
+        sysColor("system_on_surface_variant")?.let { matOnSurfaceVariant = it }
+        sysColor("system_outline_variant")?.let { matOutlineVariant = it }
         return true
     }
 
@@ -3641,10 +3846,15 @@ hideAiSystemOverlay()
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            setText(savedTranslationInputText)
+            if (savedTranslationInputText.isNotEmpty()) {
+                setSelection(savedTranslationInputText.length)
+            }
             post { requestFocus() }
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    savedTranslationInputText = s?.toString() ?: ""
                     translationRunnable?.let { translationDebounceHandler.removeCallbacks(it) }
                     val query = s?.toString() ?: ""
                     if (query.isEmpty()) return
@@ -3924,296 +4134,366 @@ hideAiSystemOverlay()
         return root
     }
 
-    private fun showAiSystemOverlay() {
-        createAiOverlayPanel()
+    private fun getLanguageName(code: String): String {
+        return languages.find { it.second.equals(code, ignoreCase = true) }?.first ?: code.uppercase()
     }
 
-    private fun hideAiSystemOverlay() {
-        internalEditTextFocused = null
-        aiSystemOverlayView?.let { view ->
-            try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(view) } catch (_: Exception) { }
-            if (aiSystemOverlayView === view) {
-                aiSystemOverlayView = null
-                aiSystemOverlayRoot = null
-                aiOverlayChatContainer = null
-            }
-        } ?: run {
-            aiSystemOverlayView = null
-            aiSystemOverlayRoot = null
-            aiOverlayChatContainer = null
-        }
-    }
-
-    private var translationOverlayView: View? = null
-
-    private fun showTranslationOverlay() {
-        hideTranslationOverlay()
-        val screenWidth = resources.displayMetrics.widthPixels
-        val card = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = dpToPx(22).toFloat()
-                setColor(Color.parseColor("#F0161820"))
-            }
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            elevation = dpToPx(16).toFloat()
-            alpha = 0f; animate().alpha(1f).setDuration(220).start()
-        }
-        val inner = LinearLayout(this).apply {
+    private fun createTranslationAttachedPanel(): View {
+        isShifted = false
+        val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpToPx(12), dpToPx(4), dpToPx(12), dpToPx(6))
+            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(110)
+            )
         }
-        lateinit var inputEdit: EditText
-        lateinit var previewView: TextView
-        lateinit var copyBtn: FrameLayout
-        lateinit var insertBtn: FrameLayout
-        var activeTone = "default"
-        // Header: hold & move (drag handle)
-        val dragHandle = TextView(this).apply {
-            text = "⠿ hold & move"; setTextColor(Color.parseColor("#66FFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f); gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(16))
-        }
-        inner.addView(dragHandle)
-        // Nav row with language selection
+
+        var lastTranslatedText = ""
+
+        // Row 1: Source & Target Language Selectors + Close Button
         val navRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(28))
         }
+
+        val srcName = "${getLanguageName(translationSourceLang)} (${translationSourceLang.uppercase()})"
         val sourceLangBtn = TextView(this).apply {
-            text = translationSourceLang.uppercase()
-            setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
+            text = srcName
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 6)
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22))
             setOnClickListener { vibrateClick(); showLanguageMenu(this, true) }
         }
         navRow.addView(sourceLangBtn)
-        val targetLangBtn = TextView(this).apply {
-            text = translationTargetLang.uppercase()
+
+        val swapBtn = TextView(this).apply {
+            text = " ⇄ "
             setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.CENTER
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(38), dpToPx(24))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22))
+            setOnClickListener {
+                vibrateClick()
+                val temp = translationSourceLang
+                translationSourceLang = translationTargetLang
+                translationTargetLang = temp
+                updateKeyboardLayout()
+            }
+        }
+        navRow.addView(swapBtn)
+
+        val tgtName = "${getLanguageName(translationTargetLang)} (${translationTargetLang.uppercase()})"
+        val targetLangBtn = TextView(this).apply {
+            text = tgtName
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 6)
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22))
             setOnClickListener { vibrateClick(); showLanguageMenu(this, false) }
         }
         navRow.addView(targetLangBtn)
-        navRow.addView(TextView(this).apply {
-            text = "⇄"; setTextColor(Color.parseColor(themeAccentColor))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER
-            setPadding(dpToPx(4), 0, dpToPx(4), 0)
-            layoutParams = LinearLayout.LayoutParams(dpToPx(26), dpToPx(24))
-            setOnClickListener {
-                vibrateClick(); val temp = translationSourceLang
-                translationSourceLang = translationTargetLang; translationTargetLang = temp
-                sourceLangBtn.text = translationSourceLang.uppercase(); targetLangBtn.text = translationTargetLang.uppercase()
-            }
-        })
+
         navRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
-        navRow.addView(FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(22), dpToPx(22))
-            setOnClickListener { vibrateClick(); isTranslationActive = false; hideTranslationOverlay(); updateKeyboardLayout() }
-            addView(ImageView(this@GlideTypeKeyboardService).apply {
-                setImageResource(R.drawable.ic_close); setColorFilter(Color.WHITE)
-                layoutParams = FrameLayout.LayoutParams(dpToPx(12), dpToPx(12)).apply { gravity = Gravity.CENTER }
-            })
-        })
-        inner.addView(navRow)
-        // Input row
-        val inputRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(36))
-        }
-        inputEdit = EditText(this).apply {
-            translationInputField = this; showSoftInputOnFocus = false
-            hint = "Type to translate..."; setHintTextColor(Color.parseColor("#66FFFFFF"))
-            setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 8)
-            maxLines = 1; isSingleLine = true
-            setPadding(dpToPx(10), 0, dpToPx(10), 0)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
-        }
-        inputRow.addView(inputEdit)
-        inputRow.addView(FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
-            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(30)).apply { setMargins(dpToPx(3), 0, 0, 0) }
-            setOnClickListener { vibrateClick(); if (isListening) stopVoiceInput() else startVoiceInput() }
-            addView(ImageView(this@GlideTypeKeyboardService).apply {
-                setImageResource(R.drawable.ic_mic); setColorFilter(Color.parseColor("#AAAAAA"))
-                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
-            })
-        })
-        inner.addView(inputRow)
-        // Preview area
-        previewView = TextView(this).apply {
-            visibility = View.GONE
-            setTextColor(Color.parseColor("#DDFFFFFF"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            background = createKeyDrawableWithRadius(Color.parseColor("#221A1A3E"), 8)
-            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, dpToPx(4), 0, dpToPx(4))
-            }
-        }
-        inner.addView(previewView)
-        // Tone buttons row
-        val toneRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(26)).apply { setMargins(0, dpToPx(2), 0, dpToPx(2)) }
-        }
-        val tones = listOf("Casual", "Formal", "Poetic", "Witty")
-        val toneViews = mutableListOf<TextView>()
-        for (tone in tones) {
-            val tv = TextView(this).apply {
-                text = tone; gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#88FFFFFF"))
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(22), 1f).apply { setMargins(dpToPx(2), 0, dpToPx(2), 0) }
-                setOnClickListener {
-                    vibrateClick()
-                    activeTone = if (activeTone == tone.lowercase()) "default" else tone.lowercase()
-                    for (v in toneViews) {
-                        val isActive = v.text.toString().lowercase() == activeTone
-                        v.setTextColor(Color.parseColor(if (isActive) themeAccentColor else "#88FFFFFF"))
-                        v.background = createKeyDrawableWithRadius(
-                            Color.parseColor(if (isActive) "#334D1CFF" else "#222244"), 6)
-                    }
-                }
-            }
-            toneViews.add(tv)
-            toneRow.addView(tv)
-        }
-        inner.addView(toneRow)
-        // Bottom row: translate button, copy, insert
-        val bottomRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(32))
-        }
-        bottomRow.addView(FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF"), 8)
-            isClickable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(70), dpToPx(26)).apply { setMargins(0, 0, dpToPx(4), 0) }
+
+        val closeBtn = ImageView(this).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(themeTextColor)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
             setOnClickListener {
                 vibrateClick()
-                val t = inputEdit.text.toString().trim()
-                if (t.isEmpty()) return@setOnClickListener
-                previewView.text = "Translating..."; previewView.visibility = View.VISIBLE
-                translateText(t, translationSourceLang, translationTargetLang) { translation ->
-                    if (translation == null) {
-                        previewView.text = "Translation failed"; return@translateText
-                    }
-                    if (activeTone != "default") {
-                        previewView.text = "Applying $activeTone tone..."
-                        aiRewriteText(translation, activeTone) { rewritten ->
-                            previewView.text = rewritten ?: translation
-                            previewView.visibility = View.VISIBLE
+                isTranslationActive = false
+                updateKeyboardLayout()
+            }
+        }
+        navRow.addView(closeBtn)
+        panel.addView(navRow)
+
+        // Row 2: Input Edit Text + Voice Mic
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(34))
+        }
+
+        val resultLabel = TextView(this)
+
+        val edit = EditText(this).apply {
+            translationInputField = this
+            hint = "Type to translate ($srcName -> $tgtName)..."
+            setHintTextColor(Color.parseColor(themeHintColor))
+            setTextColor(themeTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            background = createKeyDrawableWithRadius(Color.parseColor(themeRegularKeyBg), 6)
+            maxLines = 1; isSingleLine = true
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    val query = s?.toString() ?: ""
+                    if (query.isNotEmpty()) {
+                        translateText(query, translationSourceLang, translationTargetLang) { res ->
+                            Handler(Looper.getMainLooper()).post {
+                                val out = res ?: ""
+                                lastTranslatedText = out
+                                resultLabel.text = if (out.isNotEmpty()) "✓ $out" else "Translating..."
+                            }
                         }
                     } else {
-                        previewView.text = translation
-                        previewView.visibility = View.VISIBLE
+                        lastTranslatedText = ""
+                        resultLabel.text = ""
+                    }
+                }
+            })
+        }
+        inputRow.addView(edit)
+
+        val micBtn = ImageView(this).apply {
+            setImageResource(R.drawable.ic_mic)
+            setColorFilter(themeTextColor)
+            background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 6)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply { setMargins(dpToPx(4), 0, 0, 0) }
+            setOnClickListener { vibrateClick(); if (isListening) stopVoiceInput() else startVoiceInput() }
+        }
+        inputRow.addView(micBtn)
+        panel.addView(inputRow)
+
+        // Row 3: Result Preview & Insert Chip
+        val resultRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dpToPx(2), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(30))
+        }
+
+        resultLabel.apply {
+            text = ""
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        resultRow.addView(resultLabel)
+
+        val insertChip = TextView(this).apply {
+            text = "Insert"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 6)
+            setPadding(dpToPx(10), 0, dpToPx(10), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(22)).apply { setMargins(dpToPx(6), 0, 0, 0) }
+            setOnClickListener {
+                vibrateClick()
+                if (lastTranslatedText.isNotEmpty()) {
+                    currentInputConnection?.commitText(lastTranslatedText, 1)
+                    Toast.makeText(this@GlideTypeKeyboardService, "Inserted", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        resultRow.addView(insertChip)
+        panel.addView(resultRow)
+
+        return panel
+    }
+
+    private fun createAiAttachedPanel(): View {
+        isShifted = false
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor(themeToolbarBg))
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(190)
+            )
+        }
+
+        // Header Row: Gemini Icon, Title, Badge, Close X
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(26))
+        }
+        headerRow.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_gemini)
+            setColorFilter(Color.parseColor(themeAccentColor))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { setMargins(0, 0, dpToPx(6), 0) }
+        })
+        headerRow.addView(TextView(this).apply {
+            text = "Gemini AI"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            setTypeface(null, android.graphics.Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        headerRow.addView(TextView(this).apply {
+            text = "PRO"
+            setTextColor(Color.parseColor(themeAccentColor))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor + "22"), 4)
+            setPadding(dpToPx(4), dpToPx(1), dpToPx(4), dpToPx(1))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dpToPx(6), 0, 0, 0) }
+        })
+        headerRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+        val clearBtn = ImageView(this).apply {
+            setImageResource(R.drawable.ic_clear_chat)
+            setColorFilter(themeTextColor)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
+            setOnClickListener {
+                vibrateClick()
+                aiChatMessages.clear()
+                currentAiResponse = null
+                aiOverlayChatContainer?.removeAllViews()
+                Toast.makeText(this@GlideTypeKeyboardService, "Chat cleared", Toast.LENGTH_SHORT).show()
+            }
+        }
+        headerRow.addView(clearBtn)
+
+        val closeBtn = ImageView(this).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(themeTextColor)
+            layoutParams = LinearLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
+            setOnClickListener {
+                vibrateClick()
+                isAiChatActive = false
+                updateKeyboardLayout()
+            }
+        }
+        headerRow.addView(closeBtn)
+        panel.addView(headerRow)
+
+        // Action Chips Row (Rephrase, Summarize, Fix Grammar)
+        val chipsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dpToPx(2), 0, dpToPx(2))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(24))
+        }
+        for ((chipLabel, promptTemplate) in listOf(
+            "Fix Grammar" to "Fix grammar and spelling: ",
+            "Rephrase" to "Rephrase professionally: ",
+            "Summarize" to "Summarize key points: "
+        )) {
+            chipsRow.addView(TextView(this).apply {
+                text = chipLabel
+                setTextColor(themeTextColor)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
+                background = createKeyDrawableWithRadius(Color.parseColor(themeSpecialKeyBg), 6)
+                setPadding(dpToPx(8), dpToPx(2), dpToPx(8), dpToPx(2))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { setMargins(0, 0, dpToPx(4), 0) }
+                setOnClickListener {
+                    vibrateClick()
+                    val existing = aiInputField?.text?.toString() ?: ""
+                    aiInputField?.setText(promptTemplate + existing)
+                    aiInputField?.setSelection(aiInputField?.text?.length ?: 0)
+                }
+            })
+        }
+        panel.addView(chipsRow)
+
+        // Chat messages scroll container
+        val chatScrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+        val chatContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dpToPx(2), 0, dpToPx(2))
+        }
+        aiOverlayChatContainer = chatContainer
+        chatScrollView.addView(chatContainer)
+        panel.addView(chatScrollView)
+
+        // Prompt Input Row
+        val promptRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(34))
+        }
+        val promptEdit = EditText(this).apply {
+            aiInputField = this
+            hint = "Ask AI anything..."
+            setHintTextColor(Color.parseColor(themeHintColor))
+            setTextColor(themeTextColor)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = createKeyDrawableWithRadius(Color.parseColor(themeRegularKeyBg), 8)
+            maxLines = 1; isSingleLine = true
+            setPadding(dpToPx(8), 0, dpToPx(8), 0)
+            setText(savedAiInputText)
+            if (savedAiInputText.isNotEmpty()) {
+                setSelection(savedAiInputText.length)
+            }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    savedAiInputText = s?.toString() ?: ""
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
+        promptRow.addView(promptEdit, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+
+        val micBtn = FrameLayout(this).apply {
+            background = createKeyDrawableWithRadius(if (isListening) Color.parseColor("#D32F2F") else Color.parseColor(themeSpecialKeyBg), 8)
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dpToPx(30), dpToPx(28)).apply { setMargins(dpToPx(4), 0, 0, 0) }
+            setOnClickListener { vibrateClick(); if (isListening) stopVoiceInput() else startVoiceInput() }
+            addView(ImageView(this@GlideTypeKeyboardService).apply {
+                setImageResource(R.drawable.ic_mic)
+                setColorFilter(if (isListening) Color.WHITE else themeTextColor)
+                layoutParams = FrameLayout.LayoutParams(dpToPx(16), dpToPx(16)).apply { gravity = Gravity.CENTER }
+            })
+        }
+        promptRow.addView(micBtn)
+
+        val sendBtn = TextView(this).apply {
+            text = "Send"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); gravity = Gravity.CENTER
+            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 8)
+            setPadding(dpToPx(10), 0, dpToPx(10), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28)).apply { setMargins(dpToPx(4), 0, 0, 0) }
+            setOnClickListener {
+                vibrateClick()
+                val q = promptEdit.text.toString().trim()
+                if (q.isNotEmpty()) {
+                    promptEdit.setText("")
+                    aiChatMessages.add(true to q)
+                    aiOverlayChatContainer?.addView(createChatBubble(true, q))
+                    val placeholder = TextView(this@GlideTypeKeyboardService).apply {
+                        this.text = "Typing..."; setTextColor(Color.parseColor(themeHintColor))
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                        setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+                        tag = "aiTyping"
+                    }
+                    aiOverlayChatContainer?.addView(placeholder)
+                    aiOverlayChatContainer?.post { (aiOverlayChatContainer?.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
+                    aiAssist("Chat", q) { result ->
+                        val response = result ?: "Sorry, I couldn't process that."
+                        aiChatMessages.add(false to response)
+                        Handler(Looper.getMainLooper()).post {
+                            aiOverlayChatContainer?.findViewWithTag<View>("aiTyping")?.let { aiOverlayChatContainer?.removeView(it) }
+                            aiOverlayChatContainer?.addView(createChatBubble(false, response))
+                            aiOverlayChatContainer?.post { (aiOverlayChatContainer?.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
+                        }
                     }
                 }
             }
-            addView(TextView(this@GlideTypeKeyboardService).apply {
-                text = "Translate"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-                setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-            })
-        })
-        bottomRow.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
-        // Copy button
-        copyBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#222244"), 6)
-            isClickable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(26)).apply { setMargins(dpToPx(4), 0, dpToPx(4), 0) }
-            setOnClickListener {
-                vibrateClick()
-                val txt = previewView.text.toString()
-                if (txt.isNotEmpty() && txt != "Translating..." && txt != "Translation failed") {
-                    (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("translation", txt))
-                    Toast.makeText(this@GlideTypeKeyboardService, "Copied", Toast.LENGTH_SHORT).show()
-                }
-            }
-            addView(TextView(this@GlideTypeKeyboardService).apply {
-                text = "Copy"; setTextColor(Color.parseColor("#88FFFFFF")); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                gravity = Gravity.CENTER
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-            })
         }
-        bottomRow.addView(copyBtn)
-        // Insert button
-        insertBtn = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor(themeAccentColor), 8)
-            isClickable = true
-            layoutParams = LinearLayout.LayoutParams(dpToPx(46), dpToPx(26)).apply { setMargins(dpToPx(4), 0, 0, 0) }
-            setOnClickListener {
-                vibrateClick()
-                val txt = previewView.text.toString()
-                if (txt.isNotEmpty() && txt != "Translating..." && txt != "Translation failed") {
-                    currentInputConnection?.commitText(txt, 1)
-                    previewView.text = ""; previewView.visibility = View.GONE
-                    inputEdit.text.clear()
-                }
-            }
-            addView(TextView(this@GlideTypeKeyboardService).apply {
-                text = "Insert"; setTextColor(Color.WHITE); setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                setTypeface(null, android.graphics.Typeface.BOLD); gravity = Gravity.CENTER
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
-            })
-        }
-        bottomRow.addView(insertBtn)
-        inner.addView(bottomRow)
-        card.addView(inner)
+        promptRow.addView(sendBtn)
+        panel.addView(promptRow)
 
-        val root = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(screenWidth - dpToPx(16), ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        root.addView(card)
-        val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val loc = IntArray(2)
-        keyboardContainer.getLocationOnScreen(loc)
-        val keyboardY = loc[1]
-        val screenHeight = resources.displayMetrics.heightPixels
-        val lp = WindowManager.LayoutParams(
-            screenWidth,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            android.graphics.PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            y = screenHeight - keyboardY + dpToPx(4)
-            token = keyboardContainer.windowToken
-        }
-        wm.addView(root, lp)
-        translationOverlayView = root
-        // Drag via header handle
-        var dragDx = 0f; var dragDy = 0f
-        dragHandle.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> { dragDx = event.rawX - lp.x; dragDy = event.rawY - lp.y; true }
-                MotionEvent.ACTION_MOVE -> {
-                    lp.x = (event.rawX - dragDx).toInt(); lp.y = (event.rawY - dragDy).toInt()
-                    wm.updateViewLayout(root, lp); true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { true }
-                else -> false
-            }
-        }
+        return panel
     }
 
-    private fun hideTranslationOverlay() {
-        translationOverlayView?.let {
-            try { (getSystemService(Context.WINDOW_SERVICE) as WindowManager).removeView(it) } catch (_: Exception) { }
-        }
-        translationOverlayView = null
-    }
+    private fun showAiSystemOverlay() {}
+    private fun hideAiSystemOverlay() {}
+    private fun showTranslationOverlay() {}
+    private fun hideTranslationOverlay() {}
     private fun formatMarkdown(text: String): android.text.SpannableStringBuilder {
         val sb = android.text.SpannableStringBuilder(text)
         // Bold: **text**
@@ -4263,12 +4543,12 @@ hideAiSystemOverlay()
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f); setTypeface(null, android.graphics.Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        for ((icon, label) in listOf(R.drawable.ic_undo to "History", R.drawable.ic_settings to "Settings")) {
-        header.addView(FrameLayout(this).apply {
+        val trashBtn = FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(3), 0) }
+            isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(6), 0) }
             setOnClickListener { vibrateClick()
                 aiChatMessages.clear()
+                currentAiResponse = null
                 aiOverlayChatContainer?.removeAllViews()
                 aiOverlayChatContainer?.addView(TextView(this@GlideTypeKeyboardService).apply {
                     text = "Chat cleared"; setTextColor(Color.parseColor("#66FFFFFF"))
@@ -4280,17 +4560,9 @@ hideAiSystemOverlay()
                 text = "🗑"; setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f); gravity = Gravity.CENTER
                 layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = Gravity.CENTER }
             })
-        })
-        header.addView(FrameLayout(this).apply {
-                background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
-                isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply { setMargins(0, 0, dpToPx(4), 0) }
-                setOnClickListener { vibrateClick(); Toast.makeText(this@GlideTypeKeyboardService, label, Toast.LENGTH_SHORT).show() }
-                addView(ImageView(this@GlideTypeKeyboardService).apply {
-                    setImageResource(icon); setColorFilter(Color.WHITE)
-                    layoutParams = FrameLayout.LayoutParams(dpToPx(14), dpToPx(14)).apply { gravity = Gravity.CENTER }
-                })
-            })
         }
+        header.addView(trashBtn)
+
         val closeBtn = FrameLayout(this).apply {
             background = createKeyDrawableWithRadius(Color.parseColor("#44222222"), 4)
             isClickable = true; layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24))
@@ -4612,7 +4884,7 @@ RULES:
                         }
                     } ?: "Unknown error"
                     android.util.Log.e("AI_Assist", "API error $responseCode: $errorStream")
-                    handler.post { callback(null) }
+                    Handler(Looper.getMainLooper()).post { callback(null) }
                     return@Thread
                 }
 
@@ -4621,13 +4893,13 @@ RULES:
                     val result = json.optString("result", json.optString("response", json.optString("text", json.optString("content", json.toString()))))
                     // If grammar fix, clean up extra whitespace
                     val finalResult = if (isGrammar) result.trim() else result
-                    handler.post { callback(finalResult) }
+                    Handler(Looper.getMainLooper()).post { callback(finalResult) }
                 } catch (e: Exception) {
-                    handler.post { callback(response.take(3000)) }
+                    Handler(Looper.getMainLooper()).post { callback(response.take(3000)) }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("AI_Assist", "Error: ${e.message}", e)
-                handler.post { callback(null) }
+                Handler(Looper.getMainLooper()).post { callback(null) }
             } finally {
                 conn?.disconnect()
             }
@@ -4693,17 +4965,17 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
                             reader.readText()
                         }
                     }
-                } else { handler.post { callback(null) }; return@Thread }
+                } else { Handler(Looper.getMainLooper()).post { callback(null) }; return@Thread }
                 try {
                     val json = org.json.JSONObject(response)
                     val result = json.optString("result", json.optString("response", json.optString("text", json.optString("content", json.toString()))))
-                    handler.post { callback(result.trim()) }
+                    Handler(Looper.getMainLooper()).post { callback(result.trim()) }
                 } catch (e: Exception) {
-                    handler.post { callback(null) }
+                    Handler(Looper.getMainLooper()).post { callback(null) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                handler.post { callback(null) }
+                Handler(Looper.getMainLooper()).post { callback(null) }
             } finally {
                 conn?.disconnect()
             }
@@ -4750,13 +5022,13 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
                     val responseArray = JSONArray(response)
                     val first = responseArray.getJSONArray(0)
                     val translatedText = first.getString(0)
-                    handler.post { callback(translatedText) }
+                    Handler(Looper.getMainLooper()).post { callback(translatedText) }
                 } else {
-                    handler.post { callback(null) }
+                    Handler(Looper.getMainLooper()).post { callback(null) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                handler.post { callback(null) }
+                Handler(Looper.getMainLooper()).post { callback(null) }
             } finally {
                 conn?.disconnect()
             }
@@ -4776,17 +5048,40 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
         }
     }
 
+    private fun requestPermissionDynamic(permission: String, onGranted: () -> Unit) {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            onGranted()
+        } else {
+            PermissionRequestActivity.onPermissionGranted = onGranted
+            val intent = Intent(this, PermissionRequestActivity::class.java).apply {
+                putExtra(PermissionRequestActivity.EXTRA_PERMISSION, permission)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+        }
+    }
+
+    // Reference to active voice wave view for RMS amplitude updates
+    private var activeVoiceWaveView: VoiceWaveView? = null
+
+    // Return raw recognized speech text as requested
+    private fun filterFillerWords(text: String): String {
+        return text.trim()
+    }
+
     private fun startVoiceInput() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Please grant microphone permission in the app", Toast.LENGTH_LONG).show()
-                val intent = Intent(this, SettingsActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra("request_mic", true)
+                requestPermissionDynamic(android.Manifest.permission.RECORD_AUDIO) {
+                    startVoiceInput()
                 }
-                startActivity(intent)
                 return
             }
+        }
+
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, "Speech recognition not available on this device", Toast.LENGTH_SHORT).show()
+            return
         }
 
         if (speechRecognizer == null) {
@@ -4797,12 +5092,15 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
                         playVoiceBeep(true)
                     }
                     override fun onBeginningOfSpeech() {}
-                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onRmsChanged(rmsdB: Float) {
+                        // Update wave view amplitude based on microphone level
+                        activeVoiceWaveView?.setAmplitude(rmsdB)
+                    }
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {
                         isListening = false
                         playVoiceBeep(false)
-                        updateKeyboardLayout()
+                        refreshToolbarOnly()
                     }
                     override fun onError(error: Int) {
                         isListening = false
@@ -4813,53 +5111,61 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permission denied"
                             SpeechRecognizer.ERROR_NETWORK -> "Network error"
                             SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                            SpeechRecognizer.ERROR_NO_MATCH -> "No match found"
+                            SpeechRecognizer.ERROR_NO_MATCH -> "No speech recognized"
                             SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognizer busy"
                             SpeechRecognizer.ERROR_SERVER -> "Server error"
-                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected"
                             else -> "Voice recognition error"
                         }
-                        Toast.makeText(this@GlideTypeKeyboardService, message, Toast.LENGTH_SHORT).show()
-                        updateKeyboardLayout()
+                        if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            Toast.makeText(this@GlideTypeKeyboardService, message, Toast.LENGTH_SHORT).show()
+                        }
+                        refreshToolbarOnly()
                     }
                     override fun onResults(results: android.os.Bundle?) {
                         if (!isListening) return
                         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
-                            val text = matches[0]
-if (isTranslationActive && translationInputField != null) {
-                    val et = translationInputField!!
-                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
-                    et.text.replace(pos, et.length(), text)
-                } else if (isAiChatActive && aiInputField != null) {
-                    val et = aiInputField!!
-                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
-                    et.text.replace(pos, et.length(), text + " ")
-                } else {
-                    currentInputConnection?.commitText(text + " ", 1)
-                }
+                            val raw = matches[0]
+                            val text = filterFillerWords(raw)
+                            if (text.isNotEmpty()) {
+                                if (isTranslationActive && translationInputField != null) {
+                                    val et = translationInputField!!
+                                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                                    et.text.replace(pos, et.length(), text)
+                                } else if (isAiChatActive && aiInputField != null) {
+                                    val et = aiInputField!!
+                                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                                    et.text.replace(pos, et.length(), text + " ")
+                                } else {
+                                    currentInputConnection?.commitText(text + " ", 1)
+                                }
+                            }
                         }
                         isListening = false
                         voiceInsertionPos = -1
                         playVoiceBeep(false)
-                        updateKeyboardLayout()
+                        refreshToolbarOnly()
                     }
                     override fun onPartialResults(partialResults: android.os.Bundle?) {
                         if (!isListening) return
                         val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         if (!matches.isNullOrEmpty()) {
-                            val text = matches[0]
-if (isTranslationActive && translationInputField != null) {
-                    val et = translationInputField!!
-                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
-                    et.text.replace(pos, et.length(), text)
-                } else if (isAiChatActive && aiInputField != null) {
-                    val et = aiInputField!!
-                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
-                    et.text.replace(pos, et.length(), text)
-                } else {
-                    currentInputConnection?.setComposingText(text, 1)
-                }
+                            val raw = matches[0]
+                            val text = filterFillerWords(raw)
+                            if (text.isNotEmpty()) {
+                                if (isTranslationActive && translationInputField != null) {
+                                    val et = translationInputField!!
+                                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                                    et.text.replace(pos, et.length(), text)
+                                } else if (isAiChatActive && aiInputField != null) {
+                                    val et = aiInputField!!
+                                    val pos = if (voiceInsertionPos >= 0) voiceInsertionPos else et.selectionStart.coerceAtLeast(0)
+                                    et.text.replace(pos, et.length(), text)
+                                } else {
+                                    currentInputConnection?.setComposingText(text, 1)
+                                }
+                            }
                         }
                     }
                     override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
@@ -4870,9 +5176,11 @@ if (isTranslationActive && translationInputField != null) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3000)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)  // get multiple results for best match
+            // Extended silence tolerance: 8s complete silence, 5s possibly complete
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 8000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
             if (isTranslationActive) {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, translationSourceLang)
             }
@@ -4884,14 +5192,15 @@ if (isTranslationActive && translationInputField != null) {
         }
         speechRecognizer?.startListening(intent)
         isListening = true
-        updateKeyboardLayout()
+        refreshToolbarOnly()
     }
 
     private fun stopVoiceInput() {
         speechRecognizer?.stopListening()
         isListening = false
+        activeVoiceWaveView = null
         playVoiceBeep(false)
-        updateKeyboardLayout()
+        refreshToolbarOnly()
     }
 
     private fun showKeyPreview(keyView: View, textToDisplay: String) {
@@ -5026,7 +5335,7 @@ if (isTranslationActive && translationInputField != null) {
 
                 val keyLayout = RelativeLayout(context).apply {
                     val isActiveModifier = (key == "Ctrl" && isCtrlActive) || (key == "Alt" && isAltActive)
-                    val bgColor = if (isActiveModifier) Color.parseColor(themeAccentColor) else Color.parseColor(themeSpecialKeyBg)
+                    val bgColor = if (isActiveModifier) Color.parseColor(themeAccentColor) else Color.parseColor(themeRegularKeyBg)
                     background = createKeyDrawable(bgColor)
                     isClickable = workable
                     isFocusable = workable
@@ -5265,26 +5574,21 @@ if (isTranslationActive && translationInputField != null) {
         if (currentViewMode == ViewMode.OCR) {
             stopOcrCamera()
             currentViewMode = ViewMode.QWERTY
+            updateKeyboardLayout()
         } else {
             if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Please grant camera permission to use OCR scanning", Toast.LENGTH_LONG).show()
-                val intent = Intent(this, SettingsActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    putExtra("request_camera", true)
+                requestPermissionDynamic(android.Manifest.permission.CAMERA) {
+                    currentViewMode = ViewMode.OCR
+                    updateKeyboardLayout()
                 }
-                startActivity(intent)
             } else {
                 currentViewMode = ViewMode.OCR
+                updateKeyboardLayout()
             }
         }
-        updateKeyboardLayout()
     }
 
     private fun createOcrLayout(): View {
-        pendingGalleryImageHandler = { bitmap ->
-            resumeOcrModeForGallery(bitmap)
-        }
-
         val container = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -5530,39 +5834,8 @@ if (isTranslationActive && translationInputField != null) {
                                 val rawValue = barcode.rawValue ?: continue
                                 handler.post {
                                     ocrStatusLabel?.text = "QR detected: ${rawValue.take(40)}"
-                                    if (android.util.Patterns.WEB_URL.matcher(rawValue).matches()) {
-                                        // Ask user: text or URL
-                                        val url = if (!rawValue.startsWith("http")) "https://$rawValue" else rawValue
-                                        AlertDialog.Builder(this@GlideTypeKeyboardService).apply {
-                                            setTitle("QR Code Detected")
-                                            setMessage("Content: $url\n\nWhat would you like to do?")
-                                            setPositiveButton("Insert as Text") { _, _ ->
-                                                currentInputConnection?.commitText(rawValue, 1)
-                                                Toast.makeText(this@GlideTypeKeyboardService, "Text inserted", Toast.LENGTH_SHORT).show()
-                                            }
-                                            setNeutralButton("Open URL") { _, _ ->
-                                                try {
-                                                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(this@GlideTypeKeyboardService, "Can't open URL", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                            setNegativeButton("Cancel", null)
-                                        }.create().apply {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                window?.setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                                            }
-                                            window?.let { w ->
-                                                val lp = w.attributes
-                                                lp.token = keyboardContainer.windowToken
-                                                w.attributes = lp
-                                            }
-                                            show()
-                                        }
-                                    } else {
-                                        currentInputConnection?.commitText(rawValue, 1)
-                                        Toast.makeText(this@GlideTypeKeyboardService, "QR text inserted", Toast.LENGTH_SHORT).show()
-                                    }
+                                    currentInputConnection?.commitText(rawValue, 1)
+                                    Toast.makeText(this@GlideTypeKeyboardService, "QR inserted", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -5590,7 +5863,7 @@ if (isTranslationActive && translationInputField != null) {
         }
     }
 
-    private fun resumeOcrModeForGallery(bitmap: Bitmap) {
+    fun resumeOcrModeForGallery(bitmap: Bitmap) {
         isWaitingForOcrGallery = true
         if (currentViewMode != ViewMode.OCR) {
             currentViewMode = ViewMode.OCR
@@ -5642,38 +5915,7 @@ if (isTranslationActive && translationInputField != null) {
                             if (rawValue.isNotEmpty()) {
                                 handler.post {
                                     ocrStatusLabel?.text = "QR detected: ${rawValue.take(40)}"
-                                    if (android.util.Patterns.WEB_URL.matcher(rawValue).matches()) {
-                                        val url = if (!rawValue.startsWith("http")) "https://$rawValue" else rawValue
-                                        AlertDialog.Builder(this@GlideTypeKeyboardService).apply {
-                                            setTitle("QR Code Detected")
-                                            setMessage("Content: $url\n\nWhat would you like to do?")
-                                            setPositiveButton("Insert as Text") { _, _ ->
-                                                currentInputConnection?.commitText(rawValue, 1)
-                                                Toast.makeText(this@GlideTypeKeyboardService, "Text inserted", Toast.LENGTH_SHORT).show()
-                                            }
-                                            setNeutralButton("Open URL") { _, _ ->
-                                                try {
-                                                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                                } catch (e: Exception) {
-                                                    Toast.makeText(this@GlideTypeKeyboardService, "Can't open URL", Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                            setNegativeButton("Cancel", null)
-                                        }.create().apply {
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                window?.setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
-                                            }
-                                            window?.let { w ->
-                                                val lp = w.attributes
-                                                lp.token = keyboardContainer.windowToken
-                                                w.attributes = lp
-                                            }
-                                            show()
-                                        }
-                                    } else {
-                                        currentInputConnection?.commitText(rawValue, 1)
-                                        Toast.makeText(this@GlideTypeKeyboardService, "QR text inserted", Toast.LENGTH_SHORT).show()
-                                    }
+                                    currentInputConnection?.commitText(rawValue, 1)
                                 }
                             }
                         }
@@ -5688,10 +5930,9 @@ if (isTranslationActive && translationInputField != null) {
     }
 
     companion object {
-        private var pendingGalleryImageHandler: ((Bitmap) -> Unit)? = null
-        fun setPendingGalleryImageHandler(handler: (Bitmap) -> Unit) { pendingGalleryImageHandler = handler }
+        var instance: GlideTypeKeyboardService? = null
         fun handleGalleryImage(bitmap: Bitmap) {
-            pendingGalleryImageHandler?.invoke(bitmap)
+            instance?.resumeOcrModeForGallery(bitmap)
         }
     }
 
@@ -5718,13 +5959,25 @@ class VoiceWaveView(context: Context, val accentColor: String) : View(context) {
     }
     private val handlerRef = Handler(Looper.getMainLooper())
     private val barHeights = floatArrayOf(0.2f, 0.5f, 0.8f, 0.4f, 0.6f)
+    private var targetAmp = 0.5f
+
+    fun setAmplitude(rmsdB: Float) {
+        post {
+            // Normalize rmsdB (-2dB to +10dB typically) to 0.15f - 1.0f scale
+            val norm = ((rmsdB + 2f) / 12f).coerceIn(0.15f, 1.0f)
+            targetAmp = norm
+            invalidate()
+        }
+    }
+
     private val runnable = object : Runnable {
         override fun run() {
             for (i in barHeights.indices) {
-                barHeights[i] = (0.2f + Math.random() * 0.8f).toFloat()
+                val factor = (0.3f + Math.random() * 0.7f).toFloat()
+                barHeights[i] = (targetAmp * factor).coerceIn(0.1f, 1.0f)
             }
             invalidate()
-            handlerRef.postDelayed(this, 100)
+            handlerRef.postDelayed(this, 80)
         }
     }
     init {
