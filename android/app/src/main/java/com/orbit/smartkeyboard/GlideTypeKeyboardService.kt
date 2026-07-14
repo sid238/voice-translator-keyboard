@@ -465,70 +465,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
         }
     }
 
-    private fun showFixGrammarChip() {
-        if (fixGrammarChip != null) return
-        if (!::keyboardContainer.isInitialized) return
-        val chip = FrameLayout(this).apply {
-            background = createKeyDrawableWithRadius(Color.parseColor("#7C4DFF"), 6)
-            isClickable = true
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28))
-            setOnClickListener { vibrateClick()
-                if (selectedAppText != null) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !isNetworkAvailable()) {
-                        Toast.makeText(this@GlideTypeKeyboardService, "AI requires internet", Toast.LENGTH_SHORT).show()
-                        return@setOnClickListener
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this@GlideTypeKeyboardService)) {
-                        Toast.makeText(this@GlideTypeKeyboardService, "Enable 'Display over other apps' for AI popup", Toast.LENGTH_LONG).show()
-                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-                        return@setOnClickListener
-                    }
-                    val selText = selectedAppText ?: return@setOnClickListener
-                    selectedAppText = null
-                    if (!isAiChatActive) {
-                        isAiChatActive = true
-                        isTranslationActive = false
-                        hideTranslationOverlay()
-                        updateKeyboardLayout()
-                        showAiSystemOverlay()
-                    }
-                    // Panel now exists (just created, or already open); append the
-                    // message via manual addView and keep history in sync.
-                    aiChatMessages.add(true to "Fix grammar: $selText")
-                    aiOverlayChatContainer?.addView(createChatBubble(true, "Fix grammar: $selText"))
-                    aiOverlayChatContainer?.let { c ->
-                        val placeholder = TextView(this@GlideTypeKeyboardService).apply {
-                            this.text = "Typing..."; setTextColor(Color.parseColor("#66FFFFFF"))
-                            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f); tag = "aiTyping"
-                            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
-                        }
-                        c.addView(placeholder)
-                        c.post { (c.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
-                    }
-                    aiAssist("Fix Grammar", selText) { result ->
-                        val response = result ?: "Sorry, I couldn't process that."
-                        aiChatMessages.add(false to response)
-                        aiOverlayChatContainer?.findViewWithTag<View>("aiTyping")?.let { aiOverlayChatContainer?.removeView(it) }
-                        aiOverlayChatContainer?.addView(createChatBubble(false, response))
-                        aiOverlayChatContainer?.post { (aiOverlayChatContainer?.parent as? ScrollView)?.fullScroll(View.FOCUS_DOWN) }
-                    }
-                    hideFixGrammarChip()
-                }
-            }
-            addView(TextView(this@GlideTypeKeyboardService).apply {
-                text = "  Fix Grammar  "; setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f); gravity = Gravity.CENTER
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT).apply { gravity = Gravity.CENTER }
-            })
-        }
-        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(28)).apply {
-            gravity = Gravity.TOP or Gravity.END
-            setMargins(0, dpToPx(30), dpToPx(8), 0)
-        }
-        keyboardContainer.addView(chip, params)
-        fixGrammarChip = chip
-    }
+    private fun showFixGrammarChip() {}
 
     private fun hideFixGrammarChip() {
         fixGrammarChip?.let { if (::keyboardContainer.isInitialized) keyboardContainer.removeView(it) }
@@ -4326,7 +4263,7 @@ class GlideTypeKeyboardService : InputMethodService(), LifecycleOwner {
             layoutParams = LinearLayout.LayoutParams(dpToPx(18), dpToPx(18)).apply { setMargins(0, 0, dpToPx(6), 0) }
         })
         headerRow.addView(TextView(this).apply {
-            text = "Gemini AI"
+            text = "Orbit AI"
             setTextColor(Color.parseColor(themeAccentColor))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
             setTypeface(null, android.graphics.Typeface.NORMAL)
@@ -5948,7 +5885,6 @@ Return ONLY the rewritten text, no explanations, no prefixes, no quotes.""")
             e.printStackTrace()
         }
     }
-
 }
 
 class VoiceWaveView(context: Context, val accentColor: String) : View(context) {
